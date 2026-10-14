@@ -15,5 +15,8 @@
     "agents",
     "routing",
     "guardrails"
-  ]
+  ],
+  "supportUrl": "https://github.com/mustafarslan/monerex/issues",
+  "documentationUrl": "https://github.com/mustafarslan/monerex/blob/master/docs/playbook.md",
+  "privacyPolicyUrl": "https://github.com/mustafarslan/monerex#privacy"
 }
