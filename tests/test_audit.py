@@ -169,7 +169,8 @@ class AuditTest(unittest.TestCase):
         done, result = self.audit(cwd=ROOT, env=env)
         self.assertEqual(result["findings"], [])
         self.assertGreater(result["files"], 150, "the whole tree was listed")
-        self.assertEqual(result["not_read"], [])
+        # The listing icon is the one binary file this repository is meant to hold.
+        self.assertEqual(result["not_read"], [".claude-plugin/icon.png (binary)"])
         self.assertFalse([note for note in result["notes"] if "terms were not checked" in note])
 
 
