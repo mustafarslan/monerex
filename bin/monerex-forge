@@ -1,0 +1,3 @@
+#!/bin/sh
+# Read-only fetches from the code host. See scripts/forge.py.
+exec python3 -I "$(dirname "$0")/../scripts/forge.py" "$@"

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: retro-proposes-and-stops
+context:
+  scaffold_script: fixture.sh

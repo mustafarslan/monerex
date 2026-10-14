@@ -1,0 +1,103 @@
+name: ci
+
+# Two jobs with different trust.
+#   tests  runs on every push and pull request. It holds no secret and a read-only token,
+#          and uses no third-party action: the code is fetched with plain git, so there is
+#          nothing to pin and nothing that can be swapped under us.
+#   evals  runs only when started by hand. It is the only job that sees the model API key.
+# Neither job posts, comments or pushes.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  # To run the evals every night, uncomment the two lines below. It needs the secret
+  # ANTHROPIC_API_KEY and spends model usage on every run.
+  # schedule:
+  #   - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Which eval cases to run"
+        default: smoke
+      max_cost_usd:
+        description: "Stop starting runs once this estimate is spent"
+        default: "5"
+
+permissions:
+  contents: read
+
+# A newer push replaces an older test run. An eval run is never cancelled by one: it has
+# already spent money.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git init -q .
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+      - name: Unit tests
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+          python3 --version
+          python3 -m unittest discover -s tests
+
+  evals:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Fetch the code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git init -q .
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+      - name: Install the CLI and the sandbox it needs
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q bubblewrap socat
+          npm install --global @anthropic-ai/claude-code@2.1.296
+          claude --version
+      - name: Validate the plugin
+        run: claude plugin validate --strict .
+      - name: Run the eval cases
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_TAG: ${{ inputs.tag || 'smoke' }}
+          EVAL_MAX_COST: ${{ inputs.max_cost_usd || '5' }}
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@example.invalid"
+          claude plugin eval . --tag "${EVAL_TAG}" --runs 1 --ablation none --scaffold \
+            --trust-plugin --no-publish --model sonnet --max-cost-usd "${EVAL_MAX_COST}" \
+            --json results.json --allow-tools Write Edit Bash WebSearch
+      - name: Show the scores
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import json
+          try:
+              data = json.load(open("results.json"))
+          except (OSError, ValueError):
+              raise SystemExit("no results were written")
+          for case in data.get("cases", []):
+              print("%-28s %.2f" % (case["name"], case["aggregates"]["score"]))
+          print("cost (estimate): %s USD" % data.get("costUsd"))
+          EOF

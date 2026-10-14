@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: question-is-not-a-task
+context:
+  scaffold_script: fixture.sh

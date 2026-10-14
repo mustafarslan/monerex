@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: workflow-migrate-without-isolation
+context:
+  scaffold_script: fixture.sh

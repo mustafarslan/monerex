@@ -1,0 +1,3 @@
+#!/bin/sh
+# monerex guard: confidential terms, secrets, hidden characters. See SECURITY.md.
+exec python3 -I "$(dirname "$0")/monerex_scan.py" pre-commit "$@"

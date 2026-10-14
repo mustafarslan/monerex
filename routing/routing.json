@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "models": {
+    "small": "haiku",
+    "mid": "sonnet",
+    "large": "opus",
+    "advisor": "best"
+  },
+  "model_ladder": ["small", "mid", "large"],
+  "relative_cost": { "small": 1, "mid": 3, "large": 5 },
+  "effort_ladder": ["low", "medium", "high", "xhigh"],
+  "max_escalations_per_stage": 2,
+  "routes": {
+    "read":      { "agent": "reader",      "model": "small", "effort": "low" },
+    "search":    { "agent": "scout",       "model": "small", "effort": "low" },
+    "plan":      { "agent": "architect",   "model": "large", "effort": "medium" },
+    "implement": { "agent": "implementer", "model": "mid",   "effort": "medium" },
+    "debug":     { "agent": "implementer", "model": "large", "effort": "high" },
+    "verify":    { "agent": "verifier",    "model": "mid",   "effort": "medium" },
+    "review":    { "agent": "reviewer",    "model": "large", "effort": "high" },
+    "research":  { "agent": "researcher",     "model": "mid",   "effort": "medium" },
+    "ml":        { "agent": "ml-specialist",  "model": "large", "effort": "medium" },
+    "data":      { "agent": "data-scientist", "model": "mid",   "effort": "medium" }
+  }
+}

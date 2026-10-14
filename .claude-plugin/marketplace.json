@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "monerex",
+  "description": "monerex: a gated way of working for Claude Code.",
+  "owner": {
+    "name": "mustafarslan",
+    "url": "https://github.com/mustafarslan"
+  },
+  "plugins": [
+    {
+      "name": "monerex",
+      "source": "./",
+      "description": "A gated way of working for Claude Code: one entry point per stage, agents with an explicit model and effort, and must-hold rules in hooks. You approve the plan, what is posted, and the merge."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "monerex",
+  "version": "0.2.0",
+  "description": "A gated way of working for Claude Code: one entry point per stage, agents with an explicit model and effort, and must-hold rules in hooks. You approve the plan, what is posted, and the merge.",
+  "author": {
+    "name": "Mustafa Arslan",
+    "url": "https://github.com/mustafarslan"
+  },
+  "homepage": "https://github.com/mustafarslan/monerex",
+  "repository": "https://github.com/mustafarslan/monerex",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "sdlc",
+    "agents",
+    "routing",
+    "guardrails"
+  ]
+}
