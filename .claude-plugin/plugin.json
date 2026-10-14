@@ -1,7 +1,7 @@
 {
   "name": "monerex",
   "version": "0.2.0",
-  "description": "A gated way of working for Claude Code: one entry point per stage, agents with an explicit model and effort, and must-hold rules in hooks. You approve the plan, what is posted, and the merge.",
+  "description": "An AI-driven development lifecycle for Claude Code: agents do the work in stages, hooks hold the rules, and you approve the plan, what is posted under your name, and the merge.",
   "author": {
     "name": "Mustafa Arslan",
     "url": "https://github.com/mustafarslan"

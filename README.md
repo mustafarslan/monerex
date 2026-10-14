@@ -1,12 +1,15 @@
 # monerex
 
-**A gated way of working for Claude Code.** monerex turns a task into a short, checked loop:
-it sizes the work, writes down the intent and the plan, has one agent build it test-first,
-has a fresh agent verify it, and has another review it before anything leaves your machine.
-Each agent runs with an explicit model and effort. The rules that must hold, such as "no
-push to the default branch" or "the checks passed on this commit", live in hooks, not in
-prompts. You approve three things: the plan, any text posted under your name, and the merge.
-Nothing else needs you, and nothing goes out without you.
+**An AI-driven development lifecycle for Claude Code.** From a request to a merged pull
+request, agents do the work in stages, hooks hold the rules, and you approve the plan,
+anything posted under your name, and the merge.
+
+monerex sizes each task, settles what is wanted, plans it, builds it test-first through one
+agent, verifies it in a fresh context and reviews it before anything leaves your machine. It
+opens the pull request, works through the review comments, takes tracked bugs from report to
+fix, and looks back over the logged tasks to tune itself. Every agent runs with an explicit
+model and effort, and the rules that must hold, such as "no push to the default branch" or
+"the checks passed on this commit", live in hooks, not in prompts.
 
 monerex is for Claude Code only. It runs Python 3 scripts and ships a `bin/` folder, so
 claude.ai and Cowork do not install it.
@@ -15,6 +18,72 @@ claude.ai and Cowork do not install it.
 this project, and the guards have been through several review rounds. Treat it as a careful
 first release, not a finished product.
 
+## The lifecycle
+
+Each stage starts fresh and hands over through a short file, not through the conversation.
+You type the commands marked *typed*; the others run when the stage before them hands over.
+
+| Stage | How it starts | What it does | What you approve |
+|---|---|---|---|
+| **start** | typed: `/monerex:start <task>`, or a plain-words request in an opted-in repository | Sizes the task (T0 trivial to T3 large), sets risk flags (auth, money, migrations, secrets, a public API, a new dependency and the like), checks the setup, and says which stages it will run | the path, for T2 and above |
+| **intent** | after `start`, for T2 and above | A few questions whose answers change the design, then a short intent file | the intent |
+| **plan** | after `start` or `intent`, for T1 and above | The design, the tasks and the commands that prove it works, in `docs/work/<task>/plan.md` | **the plan**, before any code changes |
+| **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks | — |
+| **verify** | after `build` | A fresh agent runs the checks itself and compares the diff with the plan | — |
+| **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context: one reviewer, up to four with separate angles for a feature or a risk flag, and a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
+| **ship** | typed: `/monerex:ship` | Pushes the branch, writes the pull request text, opens the pull request, watches its checks | **the text**; **the merge** is always yours |
+| **feedback** | typed: `/monerex:feedback [PR]` | Treats each review comment on your pull request as a claim, checks it, fixes what holds, and drafts a reply for every thread | what to fix, and **every reply** |
+| **bugfix** | typed: `/monerex:bugfix <issue>` | A test that fails for the reported symptom, the fix, proof that the test fails again without it, then verify, review and a draft pull request; the test is locked for the rest of the task | the plan and **the pull request text** |
+| **retro** | typed: `/monerex:retro` | Reads the task and routing logs and proposes a handful of changes to the way of working, each tied to a number | each change |
+
+A trivial T0 task skips the plan and runs only the checks. A T3 task is split with you into
+stages that are each T2 or smaller, signed off one at a time.
+
+## Beside the loop
+
+| Command | What it does |
+|---|---|
+| `/monerex:consult research \| ml \| data <question>` | Puts one question to a specialist: `researcher` (web search and fetch only, no access to your files), `ml-specialist` or `data-scientist`. The claims a decision rests on are checked again before they are used |
+| `/monerex:dispatch <repository> <task>` | Starts a task in another repository as its own background session, after your yes, so several run side by side and each stops at its own gates |
+| `/monerex:review-wide` | A saved workflow: reviewers from several angles on one diff, every finding put to a verifier told to refute it, and the survivors ranked |
+| `/monerex:audit` | A saved workflow: one question asked of many paths by read-only scouts, each answer that found something checked, and what the sweep missed named |
+| `/monerex:plan-from-angles` | A saved workflow: several independent designs for one task, a judge that recommends one, and the decisions it leaves to you |
+| `/monerex:migrate` | A saved workflow: the same change at many sites, each in its own worktree and checked by a verifier; nothing is merged for you |
+
+The saved workflows start many agents, so they run only when you start them.
+
+## How the agents are run
+
+- **Nine agents, each with a narrow job and tool list.** `reader` turns untrusted text (an
+  issue, review comments, bot output) into a fixed list of claims and reports any embedded
+  instructions instead of following them. `scout` searches, `architect` judges a design,
+  `implementer` is the only one that edits code, `verifier` runs the checks, `reviewer` hunts
+  faults, and `researcher`, `ml-specialist` and `data-scientist` are the specialists. Only
+  `implementer` has the edit tools; `verifier` and `data-scientist` have a shell to run checks
+  and analyses, and `consult` reports anything the data scientist changed. Only the main
+  session pushes or posts.
+- **Model and effort are chosen, never inherited.** A routing table
+  ([`routing/routing.json`](routing/routing.json)) picks them per stage from the tier and the
+  risk flags. When a stage fails twice, it escalates: a skipped step raises the effort, a
+  wrong diagnosis raises the model, and an unclear requirement comes back to you instead of
+  being retried. Two escalations per stage at most.
+- **Everything is logged locally**, so `retro` can show how each tier and route went (first
+  passes, rework, escalations), and the evals (`evals/`) run the plugin for real to check a
+  change to the method.
+
+The [playbook](docs/playbook.md) has the tiers, the stages and the routing in full.
+
+## What holds
+
+The hooks refuse a force-push, a push to the default branch, a skipped git hook, a merge, a
+push before the checks passed on what it pushes, an edit to a protected file (secrets files,
+lockfiles not in the plan, the test a bugfix locked, Claude and git configuration, CI
+workflows), a command or edit that carries a term from your private list, and a web request
+that carries a term or a secret. A subagent may not push, post or change agent configuration. Optional git hooks catch
+secrets and names in commits and refuse pushes to the default branch. These are early
+warnings that stop accidents; [SECURITY.md](SECURITY.md) says what each covers and what it
+does not.
+
 ## Install
 
 ```
@@ -22,9 +91,9 @@ first release, not a finished product.
 /plugin install monerex@monerex
 ```
 
-Requirements: Claude Code, Python 3 (CI runs the tests on the runner's Python 3), and git. The pull-request stages also need
-the GitHub CLI (`gh`), signed in. The owner's override of the default-branch rule needs
-git 2.26 or later.
+Requirements: Claude Code, Python 3 (CI runs the tests on the runner's Python 3), and git. The
+pull-request stages also need the GitHub CLI (`gh`), signed in. The owner's override of the
+default-branch rule needs git 2.26 or later.
 
 **Installing changes nothing until a repository opts in.** The hooks start on every tool
 call, find no `.monerex/config.json`, and stop: they refuse nothing, ask nothing and write
@@ -49,30 +118,26 @@ simply answered. Set `"engage": "typed"` to keep the loop for the typed command 
 call from such a session is guarded by that repository's rules, even when it acts on another
 directory.
 
-## Three ways to use it
+## Try it
 
 **Make a change.** `/monerex:start add a CSV export to the report page`. monerex sizes the
 task, asks what it needs to know, shows you the plan, and after your yes builds it with
-tests, verifies it in a fresh context and reviews it. You can also just ask for the change in
-plain words in an opted-in repository.
+tests, verifies it in a fresh context and reviews it.
 
 **Review a pull request.** `/monerex:review 42` reviews pull request 42 from its diff,
 without checking its code out (it runs a same-repository pull request's checks in a separate
 worktree only when that matters, and never runs a fork's code), checks every finding before
-reporting it, and posts nothing until you have read and approved the exact text. `/monerex:review` with no number reviews your current changes.
+reporting it, and posts nothing until you have read and approved the exact text.
+`/monerex:review` with no number reviews your current changes.
 
 **Fix a reported bug.** `/monerex:bugfix 1234` takes issue 1234 from its report to a draft
 pull request: it reproduces the bug with a failing test, fixes the cause, checks that the
 test fails again without the fix, verifies, reviews, and shows you the pull request text
 before opening it.
 
-The rest: `/monerex:ship` opens a pull request for the current branch; `/monerex:feedback`
-works through the review comments on your own pull request, with every reply approved by you
-first; `/monerex:consult` asks a specialist (`research`, `ml`, `data`); `/monerex:retro`
-reads the task log and proposes changes to the method; `/monerex:dispatch` starts a task in
-another repository as a background session, after your yes. Four saved workflows cover work
-too large for one pass: `/monerex:review-wide`, `/monerex:audit`, `/monerex:plan-from-angles`
-and `/monerex:migrate`. They run only when you start them.
+**Ask a specialist.** `/monerex:consult research what does the literature say about flaky
+test detection?` returns an answer with its sources, the ones the answer rests on checked a
+second time.
 
 ## What monerex runs, reads, writes and sends
 
