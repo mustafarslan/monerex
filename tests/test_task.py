@@ -342,6 +342,33 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.events()[-1]["result"], "exempt")
         self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "great").returncode, 2)
 
+    def dispatch(self, agent_type):
+        import time
+
+        os.makedirs(os.path.join(self.repo, ".monerex", "log"), exist_ok=True)
+        with open(os.path.join(self.repo, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"at": int(time.time()), "hook_event_name": "SubagentStart", "agent_type": agent_type}) + "\n")
+
+    def test_a_verify_verdict_needs_a_verifier_that_ran(self):
+        # Seen in a live run: with git unavailable the session logged "verify pass" without dispatching anyone.
+        self.run_script(TASK, "event", "start", "--slug", "a", "--tier", "T1")
+        self.dispatch("monerex:implementer")
+        refused = self.run_script(TASK, "event", "verify", "--verdict", "pass")
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("monerex:verifier", refused.stderr)
+        self.assertEqual([record["event"] for record in self.events()], ["start"], "nothing is logged")
+        self.dispatch("monerex:verifier")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+        self.assertEqual(self.events()[-1]["event"], "verify")
+
+    def test_a_verifier_from_before_the_task_does_not_count(self):
+        self.dispatch("monerex:verifier")
+        import time
+
+        time.sleep(1.1)
+        self.run_script(TASK, "event", "start", "--slug", "b", "--tier", "T1")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "fail").returncode, 2)
+
     def test_start_needs_a_slug_and_a_tier(self):
         self.assertEqual(self.run_script(TASK, "event", "start").returncode, 2)
 

@@ -80,7 +80,9 @@ resets anything it did not take out.
   means behaviour changed: a `spec` gap.
 - `flaky` → a `diligence` gap: the test must give the same answer every time.
 - `skipped` → nothing outside the tests changed; go on.
-- `not-run` → report the gate as not run, with its reason, and go on. Nothing was taken out.
+- `not-run` → report the gate as not run, with its reason, and go on to `monerex:verify` as
+  always: it still dispatches the verifier. Nothing was taken out. Where git cannot run at
+  all, the change cannot be committed: the gate is not run, and nothing else is skipped.
   A test command that writes tracked files is one: say which files it changed.
 - Exit 3 → stop: the working tree is not the commit again, or HEAD moved during the run.
   Report `git status` and the reason; do not reset anything yourself.
