@@ -8,12 +8,19 @@
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
   task.py event done
   task.py summary [--days N] [--json]
+  task.py proposal accept --id R2026-10-15-1 --retro retro-2026-10-15 --metric T1.escalated_share \
+      --baseline 0.5 --direction down --change "routing/routing.json: implement starts at large"
 
 Events go to .monerex/log/tasks.jsonl in this checkout, which git ignores. An
 event without --slug belongs to the task that was started last and is not done.
-check.py adds a `checks` event for every run. The log holds counts and labels,
-never code or conversation. It never blocks: the exit code is 0 unless the
-arguments are wrong. Standard library only.
+check.py adds a `checks` event for every run, and route.py a `route` event for
+every routing decision. The log holds counts and labels, never code or
+conversation. It never blocks: the exit code is 0 unless the arguments are wrong.
+
+Accepted retro proposals go to .monerex/proposals.jsonl, which is committed. Record
+one when its change has landed: the summary judges it by the tasks in its tier
+started from then on.
+Standard library only.
 """
 
 import argparse
@@ -25,6 +32,12 @@ import time
 
 TIERS = ("T0", "T1", "T2", "T3")
 GAPS = ("diligence", "knowledge", "spec")
+# The per-tier numbers a retro proposal may rest on: rates and averages, which compare across
+# periods of different length. Raw counts such as failed_check_runs do not, so they are not here.
+METRICS = ("completion", "first_pass_checks", "verify_first_pass", "escalated_share", "plan_rounds",
+           "reviewer_hit_rate", "median_minutes")
+# A proposal is judged only once its number rests on this many samples since it was accepted.
+THIN = 5
 
 
 def repo_root(cwd=None):
@@ -36,10 +49,14 @@ def log_path(root, name="tasks.jsonl"):
     return os.path.join(root, ".monerex", "log", name)
 
 
-def read(root, name="tasks.jsonl"):
+def proposals_path(root):
+    return os.path.join(root, ".monerex", "proposals.jsonl")
+
+
+def read(root, name="tasks.jsonl", path=None):
     records = []
     try:
-        with open(log_path(root, name), encoding="utf-8") as handle:
+        with open(path or log_path(root, name), encoding="utf-8") as handle:
             for line in handle:
                 try:
                     record = json.loads(line)
@@ -94,13 +111,25 @@ def rate(part, whole):
     return round(part / whole, 2) if whole else None
 
 
-def agents_between(dispatches, begin, end):
-    counts = {}
-    for record in dispatches:
-        if record.get("hook_event_name") == "SubagentStart" and begin <= record.get("at", 0) <= end:
-            name = str(record.get("agent_type") or "unknown")
-            counts[name] = counts.get(name, 0) + 1
-    return counts
+def starts_between(dispatches, begin, end):
+    return [record for record in dispatches if record.get("hook_event_name") == "SubagentStart" and begin <= record.get("at", 0) <= end]
+
+
+def match_routes(routes, starts):
+    """Pair each subagent start with the earliest route asked for before it, for the same agent, not yet used.
+
+    Returns (routes never dispatched, starts no route asked for).
+    """
+    open_routes = sorted(routes, key=lambda record: record["at"])
+    unrouted = 0
+    for start in sorted(starts, key=lambda record: record.get("at", 0)):
+        for index, route in enumerate(open_routes):
+            if route["at"] <= start.get("at", 0) and "monerex:%s" % route.get("agent") == start.get("agent_type"):
+                del open_routes[index]
+                break
+        else:
+            unrouted += 1
+    return len(open_routes), unrouted
 
 
 def summarise(records, dispatches=(), since=0):
@@ -114,7 +143,7 @@ def summarise(records, dispatches=(), since=0):
             task["tier"],
             {"started": 0, "done": 0, "checked": 0, "first_pass": 0, "failed_check_runs": 0, "escalations": {}, "escalated": 0,
              "verified": 0, "verify_first_pass": 0, "plan_rounds": [], "findings": {"confirmed": 0, "plausible": 0, "rejected": 0},
-             "elapsed": [], "agents": {}},
+             "elapsed": [], "agents": {}, "routes": {}, "routes_not_dispatched": 0, "unrouted_dispatches": 0, "attribution": {}},
         )
         row["started"] += 1
         checks, verifies, finished = named("checks"), named("verify"), named("done")
@@ -137,8 +166,20 @@ def summarise(records, dispatches=(), since=0):
         if finished:
             row["done"] += 1
             row["elapsed"].append(end - events[0]["at"])
-        for name, count in agents_between(dispatches, events[0]["at"], end).items():
-            row["agents"][name] = row["agents"].get(name, 0) + count
+        starts = starts_between(dispatches, events[0]["at"], end)
+        for record in starts:
+            name = str(record.get("agent_type") or "unknown")
+            row["agents"][name] = row["agents"].get(name, 0) + 1
+        routes = named("route")
+        how = "by route" if routes else "by time"  # a task logged before routes were is placed by its time window only
+        row["attribution"][how] = row["attribution"].get(how, 0) + 1
+        for route in routes:
+            label = "%s/%s/%s" % (route.get("agent"), route.get("model"), route.get("effort"))
+            row["routes"][label] = row["routes"].get(label, 0) + 1
+        if routes:  # a route that said stop asked for no dispatch
+            not_dispatched, unrouted = match_routes([route for route in routes if not route.get("stop")], starts)
+            row["routes_not_dispatched"] += not_dispatched
+            row["unrouted_dispatches"] += unrouted
 
     result = {}
     for tier, row in sorted(by_tier.items()):
@@ -158,8 +199,52 @@ def summarise(records, dispatches=(), since=0):
             "reviewer_hit_rate": rate(findings["confirmed"], sum(findings.values())),
             "median_minutes": round(elapsed[len(elapsed) // 2] / 60, 1) if elapsed else None,
             "agents": row["agents"],
+            "routes": row["routes"],
+            "routes_not_dispatched": row["routes_not_dispatched"],
+            "unrouted_dispatches": row["unrouted_dispatches"],
+            "attribution": row["attribution"],
+            # how many samples each rate rests on, so a proposal is not judged on one task
+            "samples": {"completion": row["started"], "first_pass_checks": row["checked"], "verify_first_pass": row["verified"],
+                        "escalated_share": row["started"], "plan_rounds": len(row["plan_rounds"]),
+                        "reviewer_hit_rate": sum(findings.values()), "median_minutes": len(elapsed)},
         }
     return result
+
+
+def readable_proposal(proposal):
+    """The proposal's (tier, key, accepted, baseline) when it is well formed, else None."""
+    if not isinstance(proposal, dict) or not isinstance(proposal.get("metric"), dict):
+        return None
+    tier, key, accepted, baseline = proposal["metric"].get("tier"), proposal["metric"].get("key"), proposal.get("accepted"), proposal.get("baseline")
+    if tier not in TIERS or key not in METRICS or proposal.get("direction") not in ("up", "down"):
+        return None
+    if isinstance(accepted, bool) or not isinstance(accepted, (int, float)) or isinstance(baseline, bool) or not isinstance(baseline, (int, float)):
+        return None
+    return tier, key, accepted, baseline
+
+
+def earlier_proposals(proposals, records):
+    """Judge each accepted proposal by the tasks in its tier that started once it was accepted."""
+    verdicts = []
+    for proposal in proposals:
+        readable = readable_proposal(proposal)
+        if readable is None:  # a hand-edited line must not break the summary retro starts from
+            label = proposal.get("id") if isinstance(proposal, dict) else None
+            verdicts.append({"id": label, "change": None, "metric": None, "baseline": None, "direction": None, "now": None, "n": 0, "verdict": "unreadable"})
+            continue
+        tier, key, accepted, baseline = readable
+        later = [task for task in runs(records) if task["tier"] == tier and task["events"][0]["at"] >= accepted]
+        row = summarise([event for task in later for event in task["events"]]).get(tier, {})
+        now, samples = row.get(key), row.get("samples", {}).get(key, 0)
+        if now is None or samples < THIN:
+            verdict = "too thin"
+        elif (now < baseline) if proposal["direction"] == "down" else (now > baseline):
+            verdict = "moved"
+        else:
+            verdict = "revert candidate"
+        verdicts.append({"id": proposal.get("id"), "change": proposal.get("change"), "metric": "%s.%s" % (tier, key),
+                         "baseline": baseline, "direction": proposal["direction"], "now": now, "n": samples, "verdict": verdict})
+    return verdicts
 
 
 def overview(root, days=None):
@@ -182,6 +267,7 @@ def overview(root, days=None):
         "dispatches": dispatches,
         "commits": len(recent("commits.jsonl")),
         "protected_files_changed_by_shell": changed,
+        "earlier_proposals": earlier_proposals(read(root, path=proposals_path(root)), read(root)),
     }
 
 
@@ -206,12 +292,24 @@ def show(result):
             lines.append("    share of tasks that escalated: %s" % row["escalated_share"])
         if row["agents"]:
             lines.append("    agents run: " + ", ".join("%s %d" % pair for pair in sorted(row["agents"].items())))
+        if row["routes"]:
+            lines.append("    routes asked for: " + ", ".join("%s %d" % pair for pair in sorted(row["routes"].items())))
+        if row["routes_not_dispatched"] or row["unrouted_dispatches"]:
+            lines.append("    routes never dispatched: %d, dispatches with no route: %d" % (row["routes_not_dispatched"], row["unrouted_dispatches"]))
     if result.get("dispatches"):
         lines.append("dispatches by agent and effort: " + ", ".join("%s %d" % pair for pair in sorted(result["dispatches"].items())))
     if result.get("commits"):
         lines.append("commits logged: %d" % result["commits"])
     if result.get("protected_files_changed_by_shell"):
         lines.append("protected files changed by a shell command: " + ", ".join("%s %d" % pair for pair in sorted(result["protected_files_changed_by_shell"].items())))
+    if result.get("earlier_proposals"):
+        lines.append("earlier proposals (tasks started since each was accepted):")
+        for item in result["earlier_proposals"]:
+            if item["verdict"] == "unreadable":
+                lines.append("    %s  unreadable: fix the line in .monerex/proposals.jsonl" % item["id"])
+                continue
+            lines.append("    %s  %s %s %s -> %s, n=%d: %s" % (
+                item["id"], item["metric"], item["direction"], item["baseline"], item["now"], item["n"], item["verdict"]))
     return "\n".join(lines)
 
 
@@ -233,8 +331,30 @@ def main(argv=None):
     summary = actions.add_parser("summary")
     summary.add_argument("--json", action="store_true")
     summary.add_argument("--days", type=int, help="look back this many days; everything when left out")
+    proposal = actions.add_parser("proposal")
+    proposal.add_argument("verb", choices=["accept"])
+    proposal.add_argument("--id", required=True)
+    proposal.add_argument("--retro", required=True, help="the retro the proposal came from, e.g. retro-2026-10-15")
+    proposal.add_argument("--metric", required=True, help="<tier>.<key>, a number the summary reports, e.g. T1.escalated_share")
+    proposal.add_argument("--baseline", required=True, type=float, help="the number the proposal rests on")
+    proposal.add_argument("--direction", required=True, choices=["up", "down"], help="which way the number should move")
+    proposal.add_argument("--change", required=True, help="the file and line that changes")
     args = parser.parse_args(argv)
     root = repo_root()
+
+    if args.action == "proposal":
+        tier, _, key = args.metric.partition(".")
+        if tier not in TIERS or key not in METRICS:
+            parser.error("--metric must be <tier>.<key> with a tier from %s and a key from %s" % (", ".join(TIERS), ", ".join(METRICS)))
+        if any(record.get("id") == args.id for record in read(root, path=proposals_path(root))):
+            parser.error("proposal %s is already recorded" % args.id)
+        record = {"id": args.id, "retro": args.retro, "accepted": int(time.time()), "metric": {"tier": tier, "key": key},
+                  "baseline": args.baseline, "direction": args.direction, "change": args.change}
+        os.makedirs(os.path.dirname(proposals_path(root)), exist_ok=True)
+        with open(proposals_path(root), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+        print("monerex: recorded proposal %s; the summary judges it by %s tasks started from now on" % (args.id, tier))
+        return 0
 
     if args.action == "summary":
         if args.days is not None and args.days <= 0:
