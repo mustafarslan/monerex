@@ -38,7 +38,10 @@ in. `<slug>` is a short kebab-case name for the task.
 - At most 150 lines. A plan that needs more is two tasks.
 - Name every file that will change. The implementer may touch only those.
 - Under *Done when*, give each outcome with the exact command that proves it. An outcome
-  without one is not in the plan.
+  without one is not in the plan. Name the test command narrowly enough that build's
+  ablation gate can run it on its own.
+- *Kind* is `refactor` only when the change keeps behaviour exactly; everything else is a
+  `change`. Build's ablation gate holds the plan to it.
 - *Inputs* and *Budget* are one line each: what may be read beyond the repository, and when
   to stop and report instead of trying again.
 - For a risk-flagged task, fill in the threat note: what is protected, which boundary the

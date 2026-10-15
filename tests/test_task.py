@@ -146,6 +146,14 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual((row["agents"], row["attribution"]), ({"monerex:implementer": 1}, {"by time": 1}))
         self.assertEqual((row["routes_not_dispatched"], row["unrouted_dispatches"], row["routes"]), (0, 0, {}))
 
+    def test_ablation_results_are_counted_per_tier(self):
+        records = [
+            event(0, "a", "start", tier="T1"), event(10, "a", "ablation", result="fail"), event(20, "a", "ablation", result="pass"),
+            event(30, "b", "start", tier="T1"), event(40, "b", "ablation", result="weak"),
+            event(50, "c", "start", tier="T1"),
+        ]
+        self.assertEqual(task.summarise(records)["T1"]["ablation"], {"fail": 1, "pass": 1, "weak": 1})
+
     def test_the_open_task_is_the_last_one_started_and_not_done(self):
         self.assertIsNone(task.open_task([]))
         records = [event(0, "a", "start"), event(1, "a", "done"), event(2, "b", "start")]
@@ -312,6 +320,12 @@ class CommandLineTest(unittest.TestCase):
                                        "--baseline", "0.5", "--direction", "up", "--change", "x")
                 self.assertEqual(done.returncode, 2)
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".monerex", "proposals.jsonl")))
+
+    def test_an_ablation_result_can_be_logged_by_hand(self):
+        self.run_script(TASK, "event", "start", "--slug", "tiny", "--tier", "T0")
+        self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "exempt").returncode, 0)
+        self.assertEqual(self.events()[-1]["result"], "exempt")
+        self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "great").returncode, 2)
 
     def test_start_needs_a_slug_and_a_tier(self):
         self.assertEqual(self.run_script(TASK, "event", "start").returncode, 2)

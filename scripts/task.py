@@ -6,6 +6,7 @@
   task.py event escalation --gap knowledge
   task.py event verify --verdict pass
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
+  task.py event ablation --result exempt   a T0 has no gate; ablate.py logs every other result itself
   task.py event done
   task.py summary [--days N] [--json]
   task.py proposal accept --id R2026-10-15-1 --retro retro-2026-10-15 --metric T1.escalated_share \
@@ -32,6 +33,7 @@ import time
 
 TIERS = ("T0", "T1", "T2", "T3")
 GAPS = ("diligence", "knowledge", "spec")
+ABLATION_RESULTS = ("pass", "weak", "fail", "flaky", "skipped", "not-run", "exempt")
 # The per-tier numbers a retro proposal may rest on: rates and averages, which compare across
 # periods of different length. Raw counts such as failed_check_runs do not, so they are not here.
 METRICS = ("completion", "first_pass_checks", "verify_first_pass", "escalated_share", "plan_rounds",
@@ -143,7 +145,7 @@ def summarise(records, dispatches=(), since=0):
             task["tier"],
             {"started": 0, "done": 0, "checked": 0, "first_pass": 0, "failed_check_runs": 0, "escalations": {}, "escalated": 0,
              "verified": 0, "verify_first_pass": 0, "plan_rounds": [], "findings": {"confirmed": 0, "plausible": 0, "rejected": 0},
-             "elapsed": [], "agents": {}, "routes": {}, "routes_not_dispatched": 0, "unrouted_dispatches": 0, "attribution": {}},
+             "elapsed": [], "agents": {}, "routes": {}, "routes_not_dispatched": 0, "unrouted_dispatches": 0, "attribution": {}, "ablation": {}},
         )
         row["started"] += 1
         checks, verifies, finished = named("checks"), named("verify"), named("done")
@@ -158,6 +160,9 @@ def summarise(records, dispatches=(), since=0):
             gap = "%s (%s)" % (event.get("gap", "unknown"), event["work"]) if event.get("work") else event.get("gap", "unknown")
             row["escalations"][gap] = row["escalations"].get(gap, 0) + 1
         row["escalated"] += 1 if named("escalation") else 0
+        for event in named("ablation"):
+            result = str(event.get("result") or "unknown")
+            row["ablation"][result] = row["ablation"].get(result, 0) + 1
         row["plan_rounds"] += [event["rounds"] for event in named("plan") if isinstance(event.get("rounds"), int)]
         for event in named("review"):
             for kind in row["findings"]:
@@ -203,6 +208,7 @@ def summarise(records, dispatches=(), since=0):
             "routes_not_dispatched": row["routes_not_dispatched"],
             "unrouted_dispatches": row["unrouted_dispatches"],
             "attribution": row["attribution"],
+            "ablation": row["ablation"],
             # how many samples each rate rests on, so a proposal is not judged on one task
             "samples": {"completion": row["started"], "first_pass_checks": row["checked"], "verify_first_pass": row["verified"],
                         "escalated_share": row["started"], "plan_rounds": len(row["plan_rounds"]),
@@ -292,6 +298,8 @@ def show(result):
             lines.append("    share of tasks that escalated: %s" % row["escalated_share"])
         if row["agents"]:
             lines.append("    agents run: " + ", ".join("%s %d" % pair for pair in sorted(row["agents"].items())))
+        if row["ablation"]:
+            lines.append("    ablation gate: " + ", ".join("%s %d" % pair for pair in sorted(row["ablation"].items())))
         if row["routes"]:
             lines.append("    routes asked for: " + ", ".join("%s %d" % pair for pair in sorted(row["routes"].items())))
         if row["routes_not_dispatched"] or row["unrouted_dispatches"]:
@@ -317,7 +325,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     actions = parser.add_subparsers(dest="action", required=True)
     event = actions.add_parser("event")
-    event.add_argument("name", choices=["start", "plan", "escalation", "verify", "review", "done"])
+    event.add_argument("name", choices=["start", "plan", "escalation", "verify", "review", "ablation", "done"])
     event.add_argument("--slug")
     event.add_argument("--tier", choices=TIERS)
     event.add_argument("--risk", action="store_true", default=None)
@@ -326,6 +334,7 @@ def main(argv=None):
     event.add_argument("--work", help="for an escalation: the kind of work that escalated, as the routing table names it")
     event.add_argument("--verdict", choices=["pass", "fail"])
     event.add_argument("--merge", choices=["yes", "after-fixes", "no"])
+    event.add_argument("--result", choices=ABLATION_RESULTS, help="for an ablation: the gate's result")
     for kind in ("confirmed", "plausible", "rejected"):
         event.add_argument("--" + kind, type=int)
     summary = actions.add_parser("summary")
@@ -364,7 +373,7 @@ def main(argv=None):
         return 0
     if args.name == "start" and not (args.slug and args.tier):
         parser.error("start needs --slug and --tier")
-    fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "confirmed", "plausible", "rejected")}
+    fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected")}
     record = append(root, args.name, slug=args.slug, **fields)
     print("monerex: logged %s for %s" % (args.name, record["task"]) if record else "monerex: no open task; nothing logged")
     return 0

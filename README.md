@@ -28,7 +28,7 @@ You type the commands marked *typed*; the others run when the stage before them 
 | **start** | typed: `/monerex:start <task>`, or a plain-words request in an opted-in repository | Sizes the task (T0 trivial to T3 large), sets risk flags (auth, money, migrations, secrets, a public API, a new dependency and the like), checks the setup, and says which stages it will run | the path, for T2 and above |
 | **intent** | after `start`, for T2 and above | A few questions whose answers change the design, then a short intent file | the intent |
 | **plan** | after `start` or `intent`, for T1 and above | The design, the tasks and the commands that prove it works, in `docs/work/<task>/plan.md` | **the plan**, before any code changes |
-| **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks | — |
+| **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks; the change is committed and taken out once more to prove its tests fail without it | — |
 | **verify** | after `build` | A fresh agent runs the checks itself and compares the diff with the plan | — |
 | **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context: one reviewer, up to four with separate angles for a feature or a risk flag, and a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
 | **ship** | typed: `/monerex:ship` | Pushes the branch, writes the pull request text, opens the pull request, watches its checks | **the text**; **the merge** is always yours |
