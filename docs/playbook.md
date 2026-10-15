@@ -272,6 +272,8 @@ Reading and posting are kept apart on purpose.
 - **CI:** the unit tests run on every push and pull request, with a read-only token and no
   third-party action. Plugin validation and the smoke evals run only when you start them by
   hand, because they need your model API key.
+- **Baselines:** recorded on 2026-10-16 from three runs of every case (73 of 75 passed; see
+  `evals/README.md`). The whole set costs about 8.40 USD a pass on the mid model.
 - **Not measured:** tokens per tier. The harness does not report usage to hooks; the eval
   tool's cost estimate is the only figure there is.
 

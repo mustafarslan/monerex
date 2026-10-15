@@ -80,6 +80,17 @@ In October 2026 on the mid model: the first sixteen cases passed three runs each
 for 4.24 USD at list price. A smoke case costs about 0.05 to 0.10 USD a run, `loop-full`
 about 0.40, and `workflow-review-wide` about 0.45 by the tool's estimate.
 
+On 2026-10-16, on the mid model, every case at `c27622b` and at `63a753c` (before the
+retro, ablation-gate, eval-gate and segmented-review changes) ran three times. At `63a753c`:
+75 of 75. At `c27622b`: 73 of 75, recorded as the baselines in `baselines.json`. One run of
+`plan-gate-plain-words` never entered the loop (the plain-words gap above, in a stage these
+changes did not touch). One run of `loop-full` met the new build gate where git cannot start
+(the macOS note below), logged the gate as not run, and then logged verify as passed without
+dispatching the verifier; the older plugin, which needed no commit in build, passed it 3 of 3.
+Cost per run of the whole set: 8.42 USD at each commit (smoke 2.42, incident 1.57, full 4.43
+at `c27622b`), about 0.05 to 0.10 USD a smoke run, 0.40 a `loop-full` run, 0.37 a
+`workflow-review-wide` run, by the tool's estimate.
+
 On macOS the shell inside a run cannot start git when `git` resolves to `/usr/bin/git`:
 that file is Apple's launcher, which must write a cache file (`xcrun_db-*`) in the user's
 temporary folder, outside the run's sandbox, and gives up when it cannot. Measured in a run:
