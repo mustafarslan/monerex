@@ -249,7 +249,13 @@ Reading and posting are kept apart on purpose.
   graded by what happened — a file, a tool call, a line in the transcript — never by a model.
   Six more cost more and run on their own: a whole task through plan, build, verify and
   review, and five that run a saved workflow in the real runtime.
-  **Full suite:** 20–50 real tasks, at milestones; every incident adds a case. Not built.
+  **Real suite:** real tasks that went wrong become cases tagged `real`, split mechanically
+  between `evals/` (tuned against) and `holdout/` (looked at only at a milestone). The suite
+  grows from the task log toward 20–50 cases; every incident adds a case.
+- **The eval gate:** `scripts/evalgate.py` compares a run with committed baselines and fails on
+  a regression (zero passes, or a one-sided Fisher exact test at p < 0.1), after running a
+  case that dropped once more. `ship` asks for a passing gate on the commit when the diff
+  touches the plugin and baselines exist.
 - **Incident cases:** every real defect found in the guards becomes a live case, tagged
   `incident` and run at milestones. Nine so far.
 - **What the plugin adds:** run with and without it once, the whole-loop case scored 1.00

@@ -10,6 +10,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EVALS = os.path.join(ROOT, "evals")
+HOLDOUT = os.path.join(ROOT, "holdout")
 DETERMINISTIC = {"regex", "tool_used", "tool_order", "file_exists"}
 PROMPT_KEYS = {"description", "tags", "max_turns", "timeout_seconds", "allowed_tools", "runs", "model", "name"}
 GRADER_KEYS = {
@@ -36,11 +37,30 @@ def split(path):
     return fields, body
 
 
-def cases():
+def cases(folder=EVALS):
+    if not os.path.isdir(folder):
+        return []
     return sorted(
-        name for name in os.listdir(EVALS)
-        if name != "results" and os.path.isdir(os.path.join(EVALS, name))
+        name for name in os.listdir(folder)
+        if name != "results" and os.path.isdir(os.path.join(folder, name))
     )
+
+
+def every_case():
+    """(folder, name) for the tuning cases under evals/ and the held-out ones under holdout/."""
+    return [(EVALS, name) for name in cases(EVALS)] + [(HOLDOUT, name) for name in cases(HOLDOUT)]
+
+
+def tags(folder, name):
+    fields, _ = split(os.path.join(folder, name, "prompt.md"))
+    return {tag.strip() for tag in fields["tags"].strip("[]").split(",")}
+
+
+def held_out(name):
+    """The split is mechanical, so nobody picks which real tasks are easy enough to tune on."""
+    import hashlib
+
+    return int(hashlib.sha256(name.encode("utf-8")).hexdigest(), 16) % 3 == 0
 
 
 class EvalCaseTest(unittest.TestCase):
@@ -48,16 +68,24 @@ class EvalCaseTest(unittest.TestCase):
         self.assertGreaterEqual(len(cases()), 5)
 
     def test_every_case_belongs_to_exactly_one_suite(self):
-        for name in cases():
+        for folder, name in every_case():
             with self.subTest(name):
-                fields, _ = split(os.path.join(EVALS, name, "prompt.md"))
-                tags = {tag.strip() for tag in fields["tags"].strip("[]").split(",")}
-                self.assertEqual(len(tags & {"smoke", "full", "incident", "gap"}), 1)
+                self.assertEqual(len(tags(folder, name) & {"smoke", "full", "incident", "gap", "real"}), 1)
+
+    def test_real_tasks_are_split_into_the_holdout_by_their_name(self):
+        for name in cases(HOLDOUT):
+            with self.subTest(name):
+                self.assertEqual(tags(HOLDOUT, name) & {"smoke", "full", "incident", "gap", "real"}, {"real"})
+                self.assertTrue(held_out(name), "this case belongs under evals/, not the holdout")
+        for name in cases(EVALS):
+            if "real" in tags(EVALS, name):
+                with self.subTest(name):
+                    self.assertFalse(held_out(name), "this real task belongs to the holdout")
 
     def test_every_case_has_a_prompt_with_known_fields(self):
-        for name in cases():
+        for folder, name in every_case():
             with self.subTest(name):
-                fields, body = split(os.path.join(EVALS, name, "prompt.md"))
+                fields, body = split(os.path.join(folder, name, "prompt.md"))
                 self.assertEqual(set(fields) - PROMPT_KEYS, set())
                 self.assertTrue(body.strip(), "the prompt is empty")
                 # The harness reads the header as YAML, where an unquoted ": " inside a value
@@ -68,21 +96,21 @@ class EvalCaseTest(unittest.TestCase):
                 self.assertEqual(tools - READ_ONLY, set(), "anything else is granted on the command line")
 
     def test_every_case_names_a_scaffold_that_exists_and_parses(self):
-        for name in cases():
+        for folder, name in every_case():
             with self.subTest(name):
-                with open(os.path.join(EVALS, name, "case.yaml"), encoding="utf-8") as handle:
+                with open(os.path.join(folder, name, "case.yaml"), encoding="utf-8") as handle:
                     text = handle.read()
                 self.assertTrue(text.strip(), "case.yaml is empty")
                 self.assertIn('schema_version: "1.1"', text)
                 self.assertIn("name: %s\n" % name, text)
                 script = re.search(r"scaffold_script:\s*(\S+)", text).group(1)
-                path = os.path.join(EVALS, name, script)
+                path = os.path.join(folder, name, script)
                 self.assertTrue(os.path.exists(path))
                 self.assertEqual(subprocess.run(["bash", "-n", path], capture_output=True).returncode, 0)
 
     def test_every_grader_is_deterministic_and_uses_known_options(self):
-        for name in cases():
-            graders = os.path.join(EVALS, name, "graders")
+        for folder, name in every_case():
+            graders = os.path.join(folder, name, "graders")
             files = sorted(os.listdir(graders))
             self.assertTrue(files, "%s has no grader" % name)
             for grader in files:
@@ -101,7 +129,7 @@ class EvalCaseTest(unittest.TestCase):
         import monerex_scan
 
         scan = monerex_scan.Scan([])
-        for folder, _, names in os.walk(EVALS):
+        for folder, _, names in [entry for top in (EVALS, HOLDOUT) for entry in os.walk(top)]:
             if os.sep + "results" in folder:
                 continue
             for name in names:

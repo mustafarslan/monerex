@@ -274,7 +274,18 @@ def overview(root, days=None):
         "commits": len(recent("commits.jsonl")),
         "protected_files_changed_by_shell": changed,
         "earlier_proposals": earlier_proposals(read(root, path=proposals_path(root)), read(root)),
+        "eval_gate": eval_gate(recent("evalgate.jsonl")),
     }
+
+
+def eval_gate(records):
+    """How the eval gate went in the period, and how often the holdout was looked at."""
+    runs = {}
+    for record in records:
+        verdict = str(record.get("verdict") or "unknown")
+        runs[verdict] = runs.get(verdict, 0) + 1
+    looks = [record for record in records if record.get("holdout")]
+    return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
 def show(result):
@@ -310,6 +321,11 @@ def show(result):
         lines.append("commits logged: %d" % result["commits"])
     if result.get("protected_files_changed_by_shell"):
         lines.append("protected files changed by a shell command: " + ", ".join("%s %d" % pair for pair in sorted(result["protected_files_changed_by_shell"].items())))
+    gate = result.get("eval_gate") or {}
+    if gate.get("runs"):
+        lines.append("eval gate runs: " + ", ".join("%s %d" % pair for pair in sorted(gate["runs"].items()))
+                     + ("; holdout looked at %d times for %d milestones" % (gate["holdout_looks"], gate["milestones"])
+                        if gate.get("holdout_looks") else ""))
     if result.get("earlier_proposals"):
         lines.append("earlier proposals (tasks started since each was accepted):")
         for item in result["earlier_proposals"]:

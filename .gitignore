@@ -4,6 +4,7 @@ __pycache__/
 .monerex/tmp/
 .monerex/state/
 evals/results/
+holdout/results/
 
 # The plans monerex writes while working on itself stay out of the public tree.
 # (In your own repository, docs/work/ holds plans meant to be committed.)

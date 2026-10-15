@@ -17,6 +17,13 @@ You never merge. `<R>` is the repository as `owner/name`; every code-host comman
   on this commit. If not, run them; a branch with failing or stale checks is not shipped.
 - The task was reviewed. If the task log shows no review, say so and ask whether to go on.
 - `git status` is clean. Uncommitted work is not part of what ships.
+- If the repository has `evals/baselines.json` and the branch changes `skills/`, `agents/`,
+  `hooks/`, `githooks/`, `routing/`, `workflows/`, `scripts/`, `templates/`, `bin/`,
+  `.claude-plugin/`, `evals/` or `holdout/`:
+  `python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/evalgate.py" status` should say the gate
+  passed on this commit. If it did not run, say "eval gate: not run" and ask whether to run
+  it first (`evalgate.py run --tag smoke`, in a terminal: it costs model usage) or ship
+  without it. A regression is not shipped.
 
 ## 2. Push
 

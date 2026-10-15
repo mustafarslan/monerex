@@ -28,7 +28,9 @@ says so. Vendor posts report their own numbers and are marked *(vendor)*.
 - No controlled study of context isolation through subagents.
 - No study of a stronger reviewer against a stronger author.
 - No published evidence for diff size, blast radius or novelty as routing signals.
-- No study of regression evals for a personal harness.
+- No study of regression evals for a personal harness. The eval gate's threshold (a one-sided
+  Fisher exact test at p < 0.1, on a few runs per case) is a judgement: with three runs it
+  catches a drop to zero or near zero, not a small slide.
 - No measurement of how many agent tasks one person can keep open and still review well. The
   limit of two is a judgement.
 - No evidence that a contract-shaped plan beats a shorter one. The three added lines are kept
