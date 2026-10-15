@@ -21,6 +21,6 @@ If the repository has an architecture gate, also run its deep check (`<command> 
 --deep`): exit 0 is clean, exit 2 is a violation and a fail, exit 1 means the tool itself
 failed and is reported as not run.
 
-Log the verdict with
+Log the verdict, which `task.py` refuses unless a `monerex:verifier` ran in this task, with
 `python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event verify --verdict <pass|fail>`,
 then tell the user the verdict, what the checks covered, and what they did not.
