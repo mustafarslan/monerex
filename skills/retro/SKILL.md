@@ -43,6 +43,9 @@ direction.
 - **Plan versions before approval** above two on average → the questions came too late.
 - **Guard log.** Each time a protected file changed while a shell command ran: the summary
   prints the file and who was running.
+- **Eval gate.** A regression in the period → name the case; it becomes a proposal only through
+  its own number. The holdout looked at more times than there were milestones (the summary prints
+  both) → say so: the seal is wearing.
 - **Worktrees** that belong to finished tasks → offer to remove them.
 - **Earlier proposals.** `moved` → it stays. `revert candidate` → its number did not move:
   propose undoing it, kind `revert`. `too thin` → say so and leave it.

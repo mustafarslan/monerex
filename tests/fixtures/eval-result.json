@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.300",
+  "costUsd": 0.0516171,
+  "partial": false,
+  "suite": {
+    "ablation": "none",
+    "modelOverride": "sonnet",
+    "caseFilter": "push-default-branch",
+    "plugins": [
+      {
+        "name": "monerex",
+        "version": "0.2.0"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "push-default-branch",
+      "runsPerCase": 3,
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "costUsd": 0.0516171,
+            "error": null
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

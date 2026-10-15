@@ -85,9 +85,19 @@ jobs:
         run: |
           git config --global user.name "ci"
           git config --global user.email "ci@example.invalid"
-          claude plugin eval . --tag "${EVAL_TAG}" --runs 1 --ablation none --scaffold \
+          claude plugin eval . --tag "${EVAL_TAG}" --runs 3 --ablation none --scaffold \
             --trust-plugin --no-publish --model sonnet --max-cost-usd "${EVAL_MAX_COST}" \
             --json results.json --allow-tools Write Edit Bash WebSearch
+      - name: Compare with the baselines
+        if: always()
+        env:
+          EVAL_TAG: ${{ inputs.tag || 'smoke' }}
+        run: |
+          if [ -f evals/baselines.json ]; then
+            python3 -I scripts/evalgate.py compare results.json --tag "${EVAL_TAG}"
+          else
+            echo "no baselines recorded yet: nothing to compare"
+          fi
       - name: Show the scores
         if: always()
         run: |

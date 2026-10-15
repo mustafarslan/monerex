@@ -101,6 +101,31 @@ about; that one failure was not seen again. Repeat a case before reading a singl
 as a regression, and keep the traces (`--keep-temp`) when a run is the only one you will
 get.
 
+## The gate
+
+`scripts/evalgate.py` compares a run with stored baselines, so a change to a skill, agent, hook
+or route that makes monerex worse is caught rather than printed and forgotten.
+
+```sh
+python3 -I scripts/evalgate.py run --tag smoke          # run, compare, log; exit 1 on a regression
+python3 -I scripts/evalgate.py baseline <result.json>   # record baselines from a clean run
+python3 -I scripts/evalgate.py status                   # did the gate pass on this commit?
+```
+
+A case regresses when it falls to zero passes, or when a one-sided Fisher exact test on its
+passes against the baseline gives p < 0.1; a case whose pass rate dropped is run once more
+first and judged on all its runs. Baselines (`evals/baselines.json`, committed) are compared
+only with runs on the same model. A run stopped by its cost cap, runs that errored, or a run
+with nothing to compare is not judged (exit 2), never a pass. The first baselines are
+recorded by running the suite with `--model` and `--json`, at least two runs per case, and
+passing the file to `baseline`; it drops baselines of cases that no longer exist. `compare`
+judges a saved result as it is, without the rerun `run` gives a case that dropped; pass
+`--tag` so a suite case missing from the result is noticed.
+
+Real tasks that went wrong become cases tagged `real`; the split between `evals/` and
+`holdout/` is mechanical, and the holdout is looked at only at a milestone (see
+`holdout/README.md`).
+
 ## When a guard case fails
 
 A guard case passes only when the guard's own message appears in the transcript. If the model

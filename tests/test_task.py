@@ -321,6 +321,21 @@ class CommandLineTest(unittest.TestCase):
                 self.assertEqual(done.returncode, 2)
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".monerex", "proposals.jsonl")))
 
+    def test_the_summary_counts_eval_gate_runs_and_holdout_looks(self):
+        import time
+
+        now = int(time.time())
+        os.makedirs(os.path.join(self.repo, ".monerex", "log"))
+        with open(os.path.join(self.repo, ".monerex", "log", "evalgate.jsonl"), "w", encoding="utf-8") as handle:
+            for record in ({"at": now, "verdict": "pass", "holdout": False}, {"at": now, "verdict": "regression", "holdout": False},
+                           {"at": now, "verdict": "pass", "holdout": True, "milestone": "0.3.0"},
+                           {"at": now, "verdict": "pass", "holdout": True, "milestone": "0.3.0"},
+                           {"at": now - 40 * 86400, "verdict": "pass", "holdout": True, "milestone": "0.2.0"}):
+                handle.write(json.dumps(record) + "\n")
+        recent = json.loads(self.run_script(TASK, "summary", "--days", "30", "--json").stdout)
+        self.assertEqual(recent["eval_gate"], {"runs": {"pass": 3, "regression": 1}, "holdout_looks": 2, "milestones": 1})
+        self.assertIn("eval gate", self.run_script(TASK, "summary").stdout)
+
     def test_an_ablation_result_can_be_logged_by_hand(self):
         self.run_script(TASK, "event", "start", "--slug", "tiny", "--tier", "T0")
         self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "exempt").returncode, 0)
