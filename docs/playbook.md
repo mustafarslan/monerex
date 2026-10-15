@@ -204,7 +204,8 @@ refuses uncommitted work, so the commit always holds the change; it never resets
 did not take out; and a killed run is put back by the next one, file by file, only where
 nothing was edited since. A test that
 still passes without the change fails the gate, as a `diligence` gap; for a refactor the
-tests must pass both ways. It generalises bugfix's revert check to every change.
+tests must pass both ways. Bugfix uses the same gate with `--bugfix`: without the fix its test must fail by assertion,
+and the session reads that failure to judge that it is the reported symptom.
 
 ## Standalone first
 

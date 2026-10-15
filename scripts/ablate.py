@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The ablation gate: the tests that prove a committed change must fail without it.
 
-  ablate.py --test "<command>" [--test ...] [--base <commit>] [--keep <path>] [--refactor]
+  ablate.py --test "<command>" [--test ...] [--base <commit>] [--keep <path>] [--refactor | --bugfix]
 
 The change is the difference between --base (default HEAD~1) and HEAD, and it must be
 committed: with anything uncommitted the gate refuses, so the commit always holds the
@@ -21,6 +21,12 @@ Test files, paths under --keep (helpers and fixtures the tests need), lockfiles 
 manifests that say how tests run (package.json, Makefile, pyproject.toml and the like) stay
 as in HEAD. Files hidden from git status (assume-unchanged, skip-worktree) are refused. Commands run at the repository root. A verdict is per command: name the narrowest
 command that runs the tests for this change, not the whole suite.
+
+For a bugfix (--bugfix) the test must fail by assertion without the fix (`weak` is a fail),
+and the fix must change code. Whether that failure is the reported symptom is not judged
+here: text cannot tell a value the broken code produced from the same words echoed from the
+test, so the tail of each failure without the change is in the result, `without_output`, for
+the session to read.
 
 Results, printed as one JSON object and logged on the open task:
   pass      every command failed by assertion without the change
@@ -75,6 +81,7 @@ BROKEN = re.compile(
     re.MULTILINE | re.IGNORECASE,
 )
 PRE_RUNS = 2
+SHOWN_LINES, SHOWN_CHARS = 30, 4000  # the tail of each command's failure without the change, for the session to read
 SUBMODULE = "160000"
 
 
@@ -295,7 +302,7 @@ def heal(root):
                      % ", ".join(others))
 
 
-def judge(classes, refactor):
+def judge(classes, refactor, bugfix=False):
     """The gate's verdict from each command's runs without the change."""
     if any(len(set(runs)) > 1 for runs in classes):
         return "flaky", "a test gave different answers without the change"
@@ -308,6 +315,8 @@ def judge(classes, refactor):
     if "broken" in seen:
         return "fail", "a test does not run without the change (syntax error or no tests): it proves nothing"
     if "missing-name" in seen:
+        if bugfix:
+            return "fail", "a bugfix's test must fail by assertion without the fix, not only because a name is missing"
         return "weak", "a test fails without the change only because a new name is missing"
     return "pass", "every command fails by assertion without the change"
 
@@ -322,11 +331,11 @@ def log(root, result):
         pass
 
 
-def ablate(root, tests, base="HEAD~1", keep=(), refactor=False, runs=3, timeout=600, stop_after_taking_out=False):
+def ablate(root, tests, base="HEAD~1", keep=(), refactor=False, runs=3, timeout=600, stop_after_taking_out=False, bugfix=False):
     held = lock(root)
     try:
         heal(root)
-        return checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_taking_out)
+        return checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_taking_out, bugfix)
     finally:
         try:
             os.remove(held)
@@ -334,7 +343,7 @@ def ablate(root, tests, base="HEAD~1", keep=(), refactor=False, runs=3, timeout=
             pass
 
 
-def checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_taking_out):
+def checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_taking_out, bugfix=False):
     dirty = uncommitted(root)
     if dirty:
         raise NotRun("commit the change first: the gate works on a commit, and these are not in one: " + ", ".join(dirty[:5]))
@@ -349,7 +358,13 @@ def checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_
     tests_changed = sorted(path for path in touched if is_test(path) and path not in kept)
     ablated = sorted(path for path in touched if path not in kept and path not in tests_changed)
     result = {"base": base, "ablated": ablated, "tests_changed": tests_changed, "kept": kept, "runs": runs, "refactor": refactor}
+    if bugfix:
+        if refactor:
+            raise NotRun("a bugfix changes behaviour; it is not a refactor")
+        result["bugfix"] = True
     if not ablated:
+        if bugfix:
+            raise NotRun("a bugfix changes code, but no file outside the tests changed")
         return dict(result, result="skipped", reason="no file outside the tests changed")
     if refactor and tests_changed:
         return dict(result, result="fail", reason="a refactor changes no test, but these changed: " + ", ".join(tests_changed))
@@ -411,13 +426,14 @@ def checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_
         at = max(at, take_out(root, base, touched, ablated))
         if stop_after_taking_out:  # for tests: leave the tree as a killed run would
             os._exit(0)
-        without = []
+        without, shown = [], {}
         for command in tests:
             outcomes = [runner.run(command, root, timeout) for _ in range(runs)]
             if any(code is None for code, _ in outcomes):
                 outcome = dict(result, result="not-run", reason="%s timed out without the change" % command)
                 break
             without.append([classify(code, output) for code, output in outcomes])
+            shown[command] = "\n".join(outcomes[-1][1].splitlines()[-SHOWN_LINES:])[-SHOWN_CHARS:]
     except (NotRun, OSError) as error:
         outcome = dict(result, result="not-run", reason="the change could not be taken out: %s" % error)
     finally:
@@ -442,8 +458,8 @@ def checked_ablate(root, tests, base, keep, refactor, runs, timeout, stop_after_
         raise Unrestored("the working tree is not the commit again: %s" % ", ".join(left[:5]))
     if outcome:
         return outcome
-    verdict, reason = judge(without, refactor)
-    return dict(result, result=verdict, reason=reason, without_change=dict(zip(tests, without)))
+    verdict, reason = judge(without, refactor, bugfix)
+    return dict(result, result=verdict, reason=reason, without_change=dict(zip(tests, without)), without_output=shown)
 
 
 EXIT = {"pass": 0, "weak": 0, "skipped": 0, "fail": 1, "flaky": 1, "not-run": 2}
@@ -455,6 +471,8 @@ def main(argv=None):
     parser.add_argument("--base", default="HEAD~1", help="the commit before the change (default HEAD~1)")
     parser.add_argument("--keep", action="append", default=[], help="a path or folder prefix the tests need, left as in HEAD; repeatable")
     parser.add_argument("--refactor", action="store_true", help="the change keeps behaviour: tests must pass with and without it")
+    parser.add_argument("--bugfix", action="store_true",
+                        help="a bugfix: its test must fail by assertion without the fix, and the fix must change code")
     parser.add_argument("--runs", type=int, default=3, help="runs of each command without the change (default 3)")
     parser.add_argument("--timeout", type=int, default=600, help="seconds one run of a command may take (default 600)")
     parser.add_argument("--stop-after-taking-out", action="store_true", help=argparse.SUPPRESS)
@@ -468,7 +486,7 @@ def main(argv=None):
         root = git(os.getcwd(), "rev-parse", "--show-toplevel").strip()
         git(root, "rev-parse", "--verify", "--quiet", "HEAD")
         result = ablate(root, args.test, base=args.base, keep=args.keep, refactor=args.refactor, runs=args.runs,
-                        timeout=args.timeout, stop_after_taking_out=args.stop_after_taking_out)
+                        timeout=args.timeout, stop_after_taking_out=args.stop_after_taking_out, bugfix=args.bugfix)
     except NotRun as error:
         result = {"result": "not-run", "reason": str(error)}
     except Unrestored as error:

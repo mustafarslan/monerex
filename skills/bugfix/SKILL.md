@@ -68,18 +68,25 @@ A reviewer that did not run is reported as not run.
 
 ## 5. Fix, behind the test
 
-Through `monerex:build`. Then the gate, in this order:
+Through `monerex:build`. Its ablation gate (build, step 4) commits the fix with the test and
+takes the fix out once; for a bugfix, run it with `--bugfix`:
 
-1. Commit the fix **without** the test. The test stays unstaged.
-2. `git revert --no-commit HEAD`, run the test, then `git revert --abort`.
-   It must fail again, with the same failure as in step 3. Passing, or failing differently,
-   fails the gate: the test does not test this fix.
-3. Commit the test. Add its path, as the repository spells it (`tests/...`, no leading `./`),
-   to `.monerex/state/protected-paths` in the worktree, with the edit tool; the guard asks about
-   that file, which is intended. Where nobody can answer, the ask is a refusal: report the
-   step as not done and go on. Do not write the file another way.
+```sh
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/ablate.py" --base <the commit the fix started from> \
+  --test '<the test from step 3>' --bugfix
+```
 
-If anything is staged when the gate starts, stop: the revert would mix it in.
+Without the fix the test must fail by assertion, every run; passing, not running, or failing
+only because a name is missing fails the gate. The result shows the end of that failure
+(`without_output`): read it. It must be the failure you saw in step 3, the reported symptom,
+not a crash or some other error. If it is not, the test does not test this fix, and the fix
+goes back to build. For a bugfix, `not-run` is not a pass: fix what its reason names and run
+the gate again.
+
+Then lock the test. Add its path, as the repository spells it (`tests/...`, no leading `./`),
+to `.monerex/state/protected-paths` in the worktree, with the edit tool; the guard asks about
+that file, which is intended. Where nobody can answer, the ask is a refusal: report the step
+as not done and go on. Do not write the file another way.
 
 Then `monerex:verify` and `monerex:review` as for any task.
 
