@@ -407,6 +407,39 @@ class AblateTest(unittest.TestCase):
         self.assertEqual(os.readlink(os.path.join(self.repo, "calc.py")), "impl_b.py")
         self.assert_clean_at(head)
 
+    def test_a_bugfix_must_fail_by_assertion_without_the_fix(self):
+        self.write("calc.py", FIXED)
+        self.write("test_calc.py", TEST_ADD)
+        self.commit("fix")
+        done, result = self.ablate("--bugfix", "--test", UNITTEST)
+        self.assertEqual((done.returncode, result["result"]), (0, "pass"), done.stdout)
+        [shown] = result["without_output"].values()
+        self.assertIn("0 != 4", shown, "the failure without the fix is shown, for the session to judge")
+        self.assertLessEqual(len(shown.splitlines()), 30)
+
+    def test_a_bugfix_test_that_fails_only_for_a_missing_name_fails_the_gate(self):
+        self.write("calc.py", BUGGY + '\n\ndef mul(a, b):\n    return a * b\n')
+        self.write("test_calc.py", 'import unittest\n\nimport calc\n\n\nclass T(unittest.TestCase):\n    def test_mul(self):\n        self.assertEqual(calc.mul(2, 3), 6)\n')
+        self.commit("mul")
+        done, result = self.ablate("--bugfix", "--test", UNITTEST)
+        self.assertEqual((done.returncode, result["result"]), (1, "fail"), done.stdout)
+        self.assertIn("by assertion", result["reason"])
+        self.assertEqual(self.ablate("--test", UNITTEST)[1]["result"], "weak", "outside a bugfix it stays weak")
+
+    def test_a_bugfix_that_changes_only_tests_is_not_run(self):
+        self.write("test_calc.py", TEST_ADD)
+        self.commit("only a test")
+        done, result = self.ablate("--bugfix", "--test", UNITTEST)
+        self.assertEqual((done.returncode, result["result"]), (2, "not-run"))
+        self.assertIn("a bugfix changes code", result["reason"])
+
+    def test_a_bugfix_is_not_a_refactor(self):
+        self.write("calc.py", FIXED)
+        self.write("test_calc.py", TEST_ADD)
+        self.commit("fix")
+        done, result = self.ablate("--bugfix", "--refactor", "--test", UNITTEST)
+        self.assertEqual((done.returncode, result["result"]), (2, "not-run"), done.stdout + done.stderr)
+
     def test_a_kept_helper_stays_in_place(self):
         self.write("support/fixture.py", "EXPECTED = 4\n")
         self.write("calc.py", FIXED)

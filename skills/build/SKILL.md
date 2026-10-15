@@ -57,7 +57,7 @@ committed work, so nothing can be lost:
 
 ```sh
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/ablate.py" --base <the commit before the change> \
-  --test "<test command>" [--test "<another>"] [--keep <helper or fixture path>] [--refactor]
+  --test "<test command>" [--test "<another>"] [--keep <helper or fixture path>] [--refactor | --bugfix]
 ```
 
 - `--test`: the narrowest command under the plan's *Done when* that runs the tests for this
@@ -66,6 +66,7 @@ python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/ablate.py" --base <the commit befo
   test-runner manifests (`package.json`, `Makefile`, `pyproject.toml` and the like) are kept
   without it.
 - `--refactor`: when the plan's *Kind* is `refactor`.
+- `--bugfix`: for a bugfix (see bugfix, step 5).
 - Give the shell call a timeout long enough for five runs of the command.
 
 It runs the tests twice with the change, takes every other changed file back to the base in
