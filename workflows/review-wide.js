@@ -1,9 +1,10 @@
 export const meta = {
   name: 'review-wide',
   description: 'Review a diff from several angles, try to refute every finding, and rank what survives',
-  whenToUse: 'A large or risky change, when one reviewer is not enough. Pass { diff, plan } with the paths of a saved diff and of the plan it should satisfy.',
+  whenToUse: 'A large or risky change, when one reviewer is not enough. Pass { diff, plan } with the paths of a saved diff and of the plan it should satisfy. For a very large diff add segments, the output of scripts/segment_diff.py.',
   phases: [
-    { title: 'Review', detail: 'one reviewer per angle, each on the same diff' },
+    { title: 'Review', detail: 'one reviewer per angle, on the whole diff or on each of its segments' },
+    { title: 'Synthesise', detail: 'with segments only: one reviewer on the whole diff, for what crosses them' },
     { title: 'Verify', detail: 'every finding put to a verifier told to refute it' },
   ],
 }
@@ -68,40 +69,85 @@ if (input.angles !== undefined) {
 const angles = input.angles === undefined ? ANGLES : ANGLES.filter((angle) => [].concat(input.angles).includes(angle.key))
 const against = input.plan ? ` against the plan at ${input.plan}` : ''
 
+// Segments split a very large diff so each reviewer reads less (context degrades as it grows);
+// the whole diff stays in reach, and one more reviewer looks only at what crosses them.
+const MAX_SEGMENTS = 3
+// An empty list is what segment_diff.py prints when splitting would not help: review the whole diff.
+const segments = Array.isArray(input.segments) && input.segments.length === 0 ? undefined : input.segments
+if (segments !== undefined) {
+  const usable = Array.isArray(segments) && segments.length >= 2 && segments.length <= MAX_SEGMENTS &&
+    segments.every((part) => part && typeof part.name === 'string' && typeof part.diff === 'string' &&
+      Array.isArray(part.paths) && part.paths.length > 0) &&
+    new Set(segments.map((part) => part.name)).size === segments.length
+  if (!usable) {
+    return { error: `segments must be 2 to ${MAX_SEGMENTS} entries of { name, diff, paths }, named apart and each with its paths, as scripts/segment_diff.py prints them` }
+  }
+}
+const assignments = segments
+  ? angles.flatMap((angle) => segments.map((part) => ({ angle, part })))
+  : angles.map((angle) => ({ angle, part: null }))
+
 phase('Review')
 // A barrier on purpose: findings are merged across every reviewer before anything is verified.
 const reviews = await parallel(
-  angles.map((angle) => () =>
+  assignments.map(({ angle, part }) => () =>
     agent(
-      `Review the diff at ${input.diff}${against}. Your angle is ${angle.key}: ${angle.brief}. ` +
+      (part
+        ? `Review one part of a change: the diff at ${part.diff}, which holds ${part.paths.join(', ')}. ` +
+          `The whole change is at ${input.diff}${against}; read it for context, and report findings in your part only. `
+        : `Review the diff at ${input.diff}${against}. `) +
+        `Your angle is ${angle.key}: ${angle.brief}. ` +
         'Report only findings on that angle, each with the input or state that triggers it. Read the code the diff depends on.',
-      { ...ROUTES.review, label: `review:${angle.key}`, phase: 'Review', schema: FINDINGS },
+      { ...ROUTES.review, label: part ? `review:${angle.key}:${part.name}` : `review:${angle.key}`, phase: 'Review', schema: FINDINGS },
     ),
   ),
 )
 
-const notRun = angles.filter((_, index) => !reviews[index]).map((angle) => `reviewer for ${angle.key}`)
+const reviewer = ({ angle, part }) => `reviewer for ${angle.key}${part ? ` on ${part.name}` : ''}`
+const notRun = assignments.filter((_, index) => !reviews[index]).map(reviewer)
 const order = { critical: 0, improvement: 1, nit: 2 }
 const merged = new Map()
-reviews.forEach((review, index) => {
-  for (const finding of (review && review.findings) || []) {
-    const key = `${finding.path}:${finding.line || 0}:${finding.claim.toLowerCase().replace(/\s+/g, ' ').slice(0, 80)}`
-    const first = merged.get(key)
-    if (!first) {
-      merged.set(key, { ...finding, angles: [angles[index].key], triggers: [finding.trigger] })
-      continue
-    }
-    // Two reviewers, one finding: it keeps the graver of the two severities and every trigger named.
-    first.angles.push(angles[index].key)
-    if (!first.triggers.includes(finding.trigger)) first.triggers.push(finding.trigger)
-    if (order[finding.severity] < order[first.severity]) {
-      first.severity = finding.severity
-      first.trigger = finding.trigger
-    }
+const add = (finding, angleName, partName) => {
+  const key = `${finding.path}:${finding.line || 0}:${finding.claim.toLowerCase().replace(/\s+/g, ' ').slice(0, 80)}`
+  const first = merged.get(key)
+  if (!first) {
+    merged.set(key, { ...finding, angles: [angleName], triggers: [finding.trigger], ...(segments ? { segments: partName ? [partName] : [] } : {}) })
+    return
   }
+  // Two reviewers, one finding: it keeps the graver of the two severities and every trigger named.
+  if (!first.angles.includes(angleName)) first.angles.push(angleName)
+  if (partName && first.segments && !first.segments.includes(partName)) first.segments.push(partName)
+  if (!first.triggers.includes(finding.trigger)) first.triggers.push(finding.trigger)
+  if (order[finding.severity] < order[first.severity]) {
+    first.severity = finding.severity
+    first.trigger = finding.trigger
+  }
+}
+reviews.forEach((review, index) => {
+  for (const finding of (review && review.findings) || []) add(finding, assignments[index].angle.key, assignments[index].part && assignments[index].part.name)
 })
+
+if (segments) {
+  phase('Synthesise')
+  const found = [...merged.values()].map((finding) => `- ${finding.path}: ${finding.claim}`).join('\n') || '(none)'
+  let across = null
+  try {
+    across = await agent(
+      `Synthesise: the change at ${input.diff}${against} was reviewed in parts (${segments.map((part) => part.name).join(', ')}). ` +
+        `The parts' reviewers found:\n${found}\n` +
+        'Report only faults that cross parts: an interface, a rename, a contract or data passed between them that one side changed ' +
+        'and the other did not follow. Do not repeat the findings above.',
+      { ...ROUTES.review, label: 'review:across', phase: 'Synthesise', schema: FINDINGS },
+    )
+  } catch (failure) {
+    across = null // the parts' findings stand; the look across them is reported as not run
+  }
+  if (!across) notRun.push('reviewer across segments')
+  for (const finding of (across && across.findings) || []) add(finding, 'across segments', null)
+}
 const candidates = [...merged.values()]
-log(`${candidates.length} candidate findings from ${angles.length - notRun.length} of ${angles.length} reviewers`)
+const reviewers = assignments.length + (segments ? 1 : 0)
+log(`${candidates.length} candidate findings from ${reviewers - notRun.length} of ${reviewers} reviewers`)
 
 phase('Verify')
 const judged = await parallel(

@@ -103,7 +103,7 @@ happens when an agent dies. You start them; no stage does, because each starts m
 
 | Workflow | For | What comes back |
 |---|---|---|
-| `/monerex:review-wide` | a large or risky diff | findings from four angles, merged, each put to a verifier told to refute it: confirmed, plausible, rejected, and unchecked |
+| `/monerex:review-wide` | a large or risky diff | findings from four angles, merged, each put to a verifier told to refute it: confirmed, plausible, rejected, and unchecked; with `segments` from `scripts/segment_diff.py`, every angle on every part of a very large diff, plus one reviewer across the parts |
 | `/monerex:audit` | one question asked of many paths | answers that held when checked, answers that did not, paths not read, and what the sweep missed |
 | `/monerex:plan-from-angles` | a feature with more than one reasonable design | three independent designs, a judge's recommendation, and the choices that are yours |
 | `/monerex:migrate` | one mechanical change at many sites | each site changed in its own worktree, then checked by a verifier that did not make the change; nothing committed or merged; `base` starts the writers on a named commit, otherwise the result names the commit they worked on |
