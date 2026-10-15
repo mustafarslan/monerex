@@ -89,11 +89,135 @@ class SummaryTest(unittest.TestCase):
         ]
         self.assertEqual(task.summarise(records, dispatches)["T1"]["agents"], {"monerex:implementer": 2, "monerex:verifier": 1})
 
+    def test_dispatches_are_attributed_to_the_route_that_asked_for_them(self):
+        route = lambda at, slug, agent, model="sonnet", effort="medium": event(  # noqa: E731
+            at, slug, "route", route_id="%s-%d" % (slug, at), work="implement", agent=agent, model=model, effort=effort)
+        records = [
+            event(100, "a", "start", tier="T1"),
+            route(110, "a", "implementer"),
+            route(115, "a", "verifier"),
+            route(118, "a", "reviewer", model="opus", effort="high"),  # routed, never dispatched
+            event(200, "a", "done"),
+            event(300, "b", "start", tier="T2"),
+            route(310, "b", "implementer", model="opus"),
+            event(400, "b", "done"),
+        ]
+        dispatches = [
+            {"at": 112, "hook_event_name": "SubagentStart", "agent_type": "monerex:implementer"},
+            {"at": 116, "hook_event_name": "SubagentStart", "agent_type": "monerex:verifier"},
+            {"at": 150, "hook_event_name": "SubagentStart", "agent_type": "monerex:scout"},  # no route asked for it
+            {"at": 320, "hook_event_name": "SubagentStart", "agent_type": "monerex:implementer"},
+        ]
+        summary = task.summarise(records, dispatches)
+        t1, t2 = summary["T1"], summary["T2"]
+        self.assertEqual(t1["agents"], {"monerex:implementer": 1, "monerex:verifier": 1, "monerex:scout": 1}, "every agent that ran counts")
+        self.assertEqual((t1["routes_not_dispatched"], t1["unrouted_dispatches"]), (1, 1))
+        self.assertEqual(t1["routes"], {"implementer/sonnet/medium": 1, "verifier/sonnet/medium": 1, "reviewer/opus/high": 1})
+        self.assertEqual(t1["attribution"], {"by route": 1})
+        self.assertEqual((t2["agents"], t2["routes"]), ({"monerex:implementer": 1}, {"implementer/opus/medium": 1}))
+
+    def test_a_dispatch_is_matched_once_to_the_earliest_open_route_of_its_agent(self):
+        records = [
+            event(100, "a", "start", tier="T1"),
+            event(110, "a", "route", route_id="r1", agent="implementer", model="sonnet", effort="medium"),
+            event(120, "a", "route", route_id="r2", agent="implementer", model="sonnet", effort="high"),
+            event(200, "a", "done"),
+        ]
+        dispatches = [
+            {"at": 105, "hook_event_name": "SubagentStart", "agent_type": "monerex:implementer"},  # before any route
+            {"at": 125, "hook_event_name": "SubagentStart", "agent_type": "monerex:implementer"},
+        ]
+        row = task.summarise(records, dispatches)["T1"]
+        self.assertEqual((row["agents"], row["routes_not_dispatched"], row["unrouted_dispatches"]), ({"monerex:implementer": 2}, 1, 1))
+
+    def test_a_route_that_said_stop_is_not_waiting_for_a_dispatch(self):
+        records = [
+            event(100, "a", "start", tier="T1"),
+            event(110, "a", "route", route_id="r1", agent="implementer", model="opus", effort="xhigh", stop=True),
+            event(200, "a", "done"),
+        ]
+        row = task.summarise(records, [])["T1"]
+        self.assertEqual((row["routes_not_dispatched"], row["routes"]), (0, {"implementer/opus/xhigh": 1}))
+
+    def test_a_task_logged_before_routes_were_falls_back_to_the_time_window(self):
+        records = [event(100, "a", "start", tier="T1"), event(200, "a", "done")]
+        dispatches = [{"at": 120, "hook_event_name": "SubagentStart", "agent_type": "monerex:implementer"}]
+        row = task.summarise(records, dispatches)["T1"]
+        self.assertEqual((row["agents"], row["attribution"]), ({"monerex:implementer": 1}, {"by time": 1}))
+        self.assertEqual((row["routes_not_dispatched"], row["unrouted_dispatches"], row["routes"]), (0, 0, {}))
+
     def test_the_open_task_is_the_last_one_started_and_not_done(self):
         self.assertIsNone(task.open_task([]))
         records = [event(0, "a", "start"), event(1, "a", "done"), event(2, "b", "start")]
         self.assertEqual(task.open_task(records), "b")
         self.assertIsNone(task.open_task(records + [event(3, "b", "done")]))
+
+
+class EarlierProposalsTest(unittest.TestCase):
+    """A retro proposal that was accepted is judged by the tasks started after it."""
+
+    def tasks(self, first_at, count, escalate, tier="T1"):
+        records = []
+        for n in range(count):
+            at = first_at + n * 1000
+            slug = "t%d-%d" % (first_at, n)
+            records.append(event(at, slug, "start", tier=tier))
+            if n < escalate:
+                records.append(event(at + 10, slug, "escalation", gap="knowledge", work="implement"))
+            records.append(event(at + 100, slug, "done"))
+        return records
+
+    def proposal(self, **fields):
+        base = {"id": "R1", "retro": "retro-2026-10-01", "accepted": 50000, "metric": {"tier": "T1", "key": "escalated_share"},
+                "baseline": 0.5, "direction": "down", "change": "routing/routing.json: implement starts at large"}
+        base.update(fields)
+        return base
+
+    def test_a_metric_that_moved_the_way_it_should_is_reported_as_moved(self):
+        records = self.tasks(0, 6, escalate=3) + self.tasks(60000, 5, escalate=1)
+        [verdict] = task.earlier_proposals([self.proposal()], records)
+        self.assertEqual((verdict["now"], verdict["n"], verdict["verdict"]), (0.2, 5, "moved"))
+
+    def test_a_metric_that_did_not_move_is_a_revert_candidate(self):
+        records = self.tasks(60000, 5, escalate=3)
+        [verdict] = task.earlier_proposals([self.proposal()], records)
+        self.assertEqual((verdict["now"], verdict["verdict"]), (0.6, "revert candidate"))
+        [up] = task.earlier_proposals([self.proposal(metric={"tier": "T1", "key": "completion"}, baseline=1.0, direction="up")], records)
+        self.assertEqual(up["verdict"], "revert candidate", "no change counts as not moved")
+
+    def test_fewer_than_five_finished_tasks_since_acceptance_is_too_thin(self):
+        records = self.tasks(0, 6, escalate=0) + self.tasks(60000, 4, escalate=0) + self.tasks(60000 + 500, 3, escalate=0, tier="T2")
+        [verdict] = task.earlier_proposals([self.proposal()], records)
+        self.assertEqual((verdict["n"], verdict["verdict"]), (4, "too thin"), "only tasks in the proposal's tier, started after it, count")
+
+    def test_thin_is_judged_on_the_metrics_own_sample(self):
+        records = self.tasks(60000, 6, escalate=0)
+        records.append(event(60000 + 50, "t60000-0", "verify", verdict="pass"))
+        [verdict] = task.earlier_proposals([self.proposal(metric={"tier": "T1", "key": "verify_first_pass"}, baseline=0.5, direction="up")], records)
+        self.assertEqual((verdict["n"], verdict["verdict"]), (1, "too thin"), "six tasks finished, but only one was verified")
+
+    def test_a_task_started_in_the_second_it_was_accepted_counts(self):
+        records = self.tasks(50000, 5, escalate=0)
+        [verdict] = task.earlier_proposals([self.proposal()], records)
+        self.assertEqual((verdict["n"], verdict["verdict"]), (5, "moved"))
+
+    def test_a_damaged_proposal_is_reported_as_unreadable_not_fatal(self):
+        records = self.tasks(60000, 5, escalate=0)
+        damaged = [
+            self.proposal(id="string-metric", metric="T1.escalated_share"),
+            self.proposal(id="string-date", accepted="2026-10-01"),
+            self.proposal(id="unknown-key", metric={"tier": "T1", "key": "escalations"}),
+            self.proposal(id="bool-baseline", baseline=True),
+            self.proposal(id="no-direction", direction="decrease"),
+            "not a record",
+        ]
+        verdicts = task.earlier_proposals(damaged, records)
+        self.assertEqual([item["verdict"] for item in verdicts], ["unreadable"] * 6)
+
+    def test_a_metric_with_no_value_yet_is_too_thin(self):
+        records = self.tasks(60000, 5, escalate=0)
+        [verdict] = task.earlier_proposals([self.proposal(metric={"tier": "T1", "key": "reviewer_hit_rate"})], records)
+        self.assertEqual((verdict["now"], verdict["verdict"]), (None, "too thin"))
 
 
 class CommandLineTest(unittest.TestCase):
@@ -165,6 +289,29 @@ class CommandLineTest(unittest.TestCase):
         for args in (("summary",), ("summary", "--days", "7"), ("event", "start", "--slug", "a", "--tier", "T1"), ("event", "done")):
             with self.subTest(args):
                 self.assertEqual(self.run_script(TASK, *args).returncode, 0)
+
+    def test_an_accepted_proposal_is_recorded_and_reported_in_the_summary(self):
+        accept = ("proposal", "accept", "--id", "R2026-10-15-1", "--retro", "retro-2026-10-15", "--metric", "T1.escalated_share",
+                  "--baseline", "0.5", "--direction", "down", "--change", "routing/routing.json: implement starts at large")
+        done = self.run_script(TASK, *accept)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        with open(os.path.join(self.repo, ".monerex", "proposals.jsonl"), encoding="utf-8") as handle:
+            [record] = [json.loads(line) for line in handle]
+        self.assertEqual((record["id"], record["metric"], record["baseline"], record["direction"]),
+                         ("R2026-10-15-1", {"tier": "T1", "key": "escalated_share"}, 0.5, "down"))
+        self.assertIsInstance(record["accepted"], int)
+        self.assertEqual(self.run_script(TASK, *accept).returncode, 2, "an id is recorded once")
+        summary = json.loads(self.run_script(TASK, "summary", "--json").stdout)
+        self.assertEqual([(p["id"], p["verdict"]) for p in summary["earlier_proposals"]], [("R2026-10-15-1", "too thin")])
+        self.assertIn("earlier proposals", self.run_script(TASK, "summary").stdout)
+
+    def test_a_proposal_must_name_a_metric_the_summary_reports(self):
+        for metric in ("T1.feelings", "T9.completion", "completion", "T1.failed_check_runs"):
+            with self.subTest(metric):
+                done = self.run_script(TASK, "proposal", "accept", "--id", "R1", "--retro", "r", "--metric", metric,
+                                       "--baseline", "0.5", "--direction", "up", "--change", "x")
+                self.assertEqual(done.returncode, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.repo, ".monerex", "proposals.jsonl")))
 
     def test_start_needs_a_slug_and_a_tier(self):
         self.assertEqual(self.run_script(TASK, "event", "start").returncode, 2)

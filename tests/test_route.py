@@ -2,8 +2,10 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -111,15 +113,36 @@ class RouteTest(unittest.TestCase):
         self.assertIsNotNone(result["advisor"])
         self.assertTrue(result["cross_family"])
 
+    def scratch_repo(self):
+        repo = os.path.realpath(tempfile.mkdtemp(prefix="monerex-route-"))
+        self.addCleanup(shutil.rmtree, repo, ignore_errors=True)
+        env = {key: value for key, value in os.environ.items() if key not in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")}
+        subprocess.run(["git", "init", "-q"], cwd=repo, env=env, capture_output=True, check=True)
+        return repo, env
+
+    def run_route(self, repo, env, *args):
+        return subprocess.run([sys.executable, "-I", os.path.join(ROOT, "scripts", "route.py"), *args],
+                              capture_output=True, text=True, cwd=repo, env=env)
+
     def test_the_command_line_prints_one_json_object(self):
-        done = subprocess.run(
-            [sys.executable, "-I", os.path.join(ROOT, "scripts", "route.py"), "--work", "implement", "--tier", "T1", "--gap", "diligence"],
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
+        repo, env = self.scratch_repo()  # never the real checkout: an open task there would get a route event
+        done = self.run_route(repo, env, "--work", "implement", "--tier", "T1", "--gap", "diligence")
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(json.loads(done.stdout)["effort"], "high")
+        result = json.loads(done.stdout)
+        self.assertEqual(result["effort"], "high")
+        self.assertRegex(result["route_id"], r"^[0-9a-f]{8}$")
+        self.assertFalse(os.path.exists(os.path.join(repo, ".monerex", "log", "tasks.jsonl")), "no open task: nothing is logged")
+
+    def test_a_route_is_logged_on_the_open_task(self):
+        import task
+
+        repo, env = self.scratch_repo()
+        task.append(repo, "start", slug="fix-login", tier="T1")
+        result = json.loads(self.run_route(repo, env, "--work", "implement", "--tier", "T1", "--gap", "knowledge").stdout)
+        [logged] = [record for record in task.read(repo) if record["event"] == "route"]
+        self.assertEqual((logged["task"], logged["route_id"], logged["work"], logged["agent"]), ("fix-login", result["route_id"], "implement", "implementer"))
+        self.assertEqual((logged["tier"], logged["model"], logged["effort"], logged["gaps"]), ("T1", result["model"], result["effort"], ["knowledge"]))
+        self.assertNotIn("reason", logged, "the log holds labels, not the reasons' prose")
 
 
 if __name__ == "__main__":

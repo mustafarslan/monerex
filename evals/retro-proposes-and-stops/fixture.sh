@@ -40,6 +40,11 @@ mkdir -p .monerex
 printf '%s\n' '{ "checks": ["python3 -m unittest -q"], "external_review": "off" }' > .monerex/config.json
 printf '%s\n' '.monerex/state/' '.monerex/log/' '.monerex/tmp/' '__pycache__/' > .gitignore
 
+# One proposal an earlier retro had accepted, eight days ago: start implement tasks one tier
+# higher so fewer escalate. The tasks below, all started after it, still escalate half the
+# time, so the summary should call it a revert candidate.
+printf '{"accepted": %d, "baseline": 0.2, "change": "routing/routing.json: implement starts at large", "direction": "down", "id": "R-earlier-1", "metric": {"key": "escalated_share", "tier": "T1"}, "retro": "retro-earlier"}\n' "$(( $(date +%s) - 8 * 86400 ))" > .monerex/proposals.jsonl
+
 git init -q -b main
 git config user.name "Eval"
 git config user.email "eval@example.invalid"

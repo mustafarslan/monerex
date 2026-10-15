@@ -250,7 +250,9 @@ Reading and posting are kept apart on purpose.
 - **Retro:** `/monerex:retro` reads the logs for a period and proposes at most five changes,
   each tied to a number: retune a route, turn a repeated finding into a guard or an eval
   case, prune an instruction. You decide each one. It never writes lessons into an
-  instruction file on its own.
+  instruction file on its own. Each yes is recorded once its change lands
+  (`.monerex/proposals.jsonl`), and every later retro reports whether its number moved:
+  moved, revert candidate, or too thin.
 - **CI:** the unit tests run on every push and pull request, with a read-only token and no
   third-party action. Plugin validation and the smoke evals run only when you start them by
   hand, because they need your model API key.

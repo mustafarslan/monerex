@@ -40,8 +40,9 @@ correct them.
 ### Beliefs the evidence does not support
 
 More agents is better. Role pipelines beat one good agent. Models catch their own errors. A
-different-model reviewer is superior (it is complementary). A bigger instruction file helps. A
-spec document by itself reduces defects. Feeling faster means being faster.
+model improves itself by judging its own runs. A different-model reviewer is superior (it is
+complementary). A bigger instruction file helps. A spec document by itself reduces defects.
+Feeling faster means being faster.
 
 ## Specialist agents
 
@@ -94,6 +95,18 @@ could teach a single developer's workflow.
 | "Pull requests are unnecessary, because no human reviews each change" | **Refused.** For code, about half of test-passing agent changes would not be merged (rule 9). A check that passes is not a review, and the merge stays yours. |
 | Background agents write knowledge pages that later agents read | **Refused.** Self-generated skills scored below having none (rule 7), and instruction files earn their cost only for what an agent would otherwise get wrong (rule 6). Lessons enter monerex through `retro`, with your approval. |
 | The storage layer: object storage, cells, lazy download, compaction | Not relevant to one developer working locally. |
+
+## Self-improvement
+
+Three research systems that improve an agent from its own runs [64][65][66] were read for what
+`retro` was missing: it proposed changes tied to numbers, but nothing reported later whether a
+change had moved its number.
+
+| From that work | In monerex |
+|---|---|
+| One model proposes multi-agent workflows, judges them against each other itself, and is fine-tuned on the winners, cycle after cycle [64] | **Refused.** Two cycles raised its own research benchmarks but lowered SWE-bench Verified (62.6 to 61.1) and Terminal-Bench 2.0 (37.5 to 35.2); gains were not monotonic, multi-agent runs used about 2.4× the tokens, and the authors note that generation, judging and revision share one prior, so self-feedback can reinforce errors. Rules 4, 7, 11 and 13 already refuse each part. |
+| A skill written from practice is kept only if fresh solvers, sharing no history with its author, pass held-out tasks with it: 3.1 to 8.2 points over no skill on open models [65] *(project README; the paper was not read)* | **Taken in part.** Skills are still written by hand (rule 7); what is taken is the check. A retro proposal that changes a skill or an agent names the eval case that shows it working, three runs of three. |
+| Candidates are scored against a sealed evaluator, and the winner is re-scored apart from where it was found and compared with ablations [66] *(project README)* | **Taken for the method itself.** Each accepted retro proposal is recorded, once its change has landed, with its number, its value and the way it should move (`.monerex/proposals.jsonl`); later retros judge it by the tasks in its tier started since: moved, revert candidate, or too thin when the number rests on fewer than five samples. The record is committed, not sealed: a changed baseline shows in the diff. Routing decisions are now logged with their task, so the summary shows which routes each tier asked for, how many were never dispatched, and how many dispatches no route asked for; agents are still placed in a task by its time window. |
 
 ## Security
 
@@ -185,3 +198,6 @@ from sandboxing was found, and none for security-review prompts.
 61. Silberzahn et al., *Many Analysts, One Data Set*, 2018 — https://doi.org/10.1177/2515245917747646
 62. *Building shared workspaces for people and agents*, 2026 — https://www.perplexity.ai/hub/blog/building-shared-workspaces-for-people-and-agents
 63. Gulli et al., *Agents Companion*, 2025 — https://www.kaggle.com/whitepaper-agent-companion
+64. Lee et al., *Recursive Self-Improvement through Multi-Agent Self-Supervision*, 2026 — https://arxiv.org/abs/2610.12176 *(read in part)*
+65. NJU-LINK, *Socratic Skill Learning*, 2026 — https://github.com/NJU-LINK/Socratic-Skill-Learning
+66. Sakana AI, *The Agentic Scientist (AI-Scientist-v3)*, 2026 — https://github.com/SakanaAI/AI-Scientist-v3

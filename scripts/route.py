@@ -14,7 +14,9 @@ tiers under "models" in its .monerex/config.json. The rules, in order:
        spec       -> stop; the task goes back to the user
   4. Stop when the escalation cap for the stage is exceeded.
 
-Prints one JSON object. Standard library only.
+Prints one JSON object, with a `route_id`. When a task is open, the decision
+is also logged to it as a `route` event (task.py), so the summary can tie each
+dispatch to the route that asked for it. Standard library only.
 """
 
 import argparse
@@ -152,9 +154,26 @@ def main(argv=None):
         gaps=args.gap,
         author=args.author,
     )
+    result["route_id"] = os.urandom(4).hex()
+    log_route(args, result)
     json.dump(result, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
+
+
+def log_route(args, result):
+    """Record the decision on the open task. Labels only, never the reasons' prose; never in the way of routing."""
+    try:
+        sys.path.insert(0, HERE)
+        import task
+
+        task.append(
+            task.repo_root(args.repo), "route", route_id=result["route_id"], work=result["work"], tier=args.tier,
+            agent=result["agent"], model=result["model"], effort=result["effort"], gaps=args.gap or None,
+            advisor=bool(result["advisor"]) or None, cross_family=result["cross_family"] or None, stop=result["stop"] or None,
+        )
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
