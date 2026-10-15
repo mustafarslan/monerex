@@ -108,6 +108,63 @@ class WorkflowTest(unittest.TestCase):
         self.assertTrue(all("docs/work/x/plan.md" in call["prompt"] for call in reviewers))
         self.assertIn("4 candidate findings from 3 of 4 reviewers", out["logs"])
 
+    def test_review_wide_in_segments_reviews_each_part_with_the_whole_in_reach_and_looks_across_them(self):
+        segments = [
+            {"name": "api", "diff": ".monerex/tmp/review-1.diff", "paths": ["api/a.py"]},
+            {"name": "web", "diff": ".monerex/tmp/review-2.diff", "paths": ["web/b.ts"]},
+        ]
+        agents = [
+            {"match": "review:correctness:api", "returns": {"findings": [finding("api/a.py", "Returns null for an empty list")]}},
+            {"match": "Synthesise", "returns": {"findings": [finding("web/b.ts", "Calls the renamed endpoint by its old name", "critical")]}},
+            {"match": "Claim: Returns null", "returns": {"outcome": "reproduced", "how": "ran it"}},
+            {"match": "Claim: Calls the renamed", "returns": {"outcome": "consistent", "how": "read both sides"}},
+        ]
+        out = run("review-wide", {"diff": ".monerex/tmp/review.diff", "segments": segments}, agents)
+        self.assertIsNone(out["error"])
+        self.assert_nothing_inherited(out)
+        reviewers = [call for call in out["calls"] if call["phase"] == "Review"]
+        self.assertEqual(len(reviewers), 8, "every angle on every segment")
+        for call in reviewers:
+            self.assertIn(".monerex/tmp/review.diff", call["prompt"], "the whole diff stays in reach")
+            self.assertTrue(any(segment["diff"] in call["prompt"] for segment in segments))
+        [synthesis] = [call for call in out["calls"] if call["phase"] == "Synthesise"]
+        self.assertEqual((synthesis["agentType"], synthesis["model"]), ("monerex:reviewer", "opus"))
+        self.assertIn("Returns null for an empty list", synthesis["prompt"], "it is shown what the segment reviews found")
+        result = out["result"]
+        self.assertEqual([f["claim"] for f in result["confirmed"]], ["Returns null for an empty list"])
+        self.assertEqual(result["confirmed"][0]["segments"], ["api"])
+        self.assertEqual([f["claim"] for f in result["plausible"]], ["Calls the renamed endpoint by its old name"])
+        self.assertEqual(result["plausible"][0]["angles"], ["across segments"])
+
+    def test_review_wide_refuses_segments_it_cannot_use(self):
+        many = [{"name": "s%d" % n, "diff": "s%d.diff" % n, "paths": ["s%d/x" % n]} for n in range(4)]
+        twice = [{"name": "a", "diff": "1.diff", "paths": ["a/x"]}, {"name": "a", "diff": "2.diff", "paths": ["a/y"]}]
+        empty = [{"name": "a", "diff": "1.diff", "paths": []}, {"name": "b", "diff": "2.diff", "paths": ["b/y"]}]
+        for segments in (many, [{"name": "a"}], "a.diff", twice, empty):
+            with self.subTest(segments=segments):
+                out = run("review-wide", {"diff": "d.diff", "segments": segments})
+                self.assertIn("segments", out["result"]["error"])
+                self.assertEqual(out["calls"], [])
+
+    def test_review_wide_with_no_segments_reviews_the_whole_diff(self):
+        out = run("review-wide", {"diff": "d.diff", "segments": []}, [])
+        self.assertEqual(sorted(call["label"] for call in out["calls"]),
+                         ["review:correctness", "review:fit", "review:security", "review:tests"], "segment_diff.py found nothing to split")
+
+    def test_review_wide_keeps_the_part_reviews_when_the_reviewer_across_them_fails(self):
+        segments = [{"name": "api", "diff": "1.diff", "paths": ["api/a.py"]}, {"name": "web", "diff": "2.diff", "paths": ["web/b.ts"]}]
+        agents = [
+            {"match": "review:correctness:api", "returns": {"findings": [finding("api/a.py", "Returns null for an empty list")]}},
+            {"match": "Synthesise", "fail": True},
+            {"match": "Claim: Returns null", "returns": {"outcome": "reproduced", "how": "ran it"}},
+            {"match": "review:", "returns": {"findings": []}},  # the other part reviewers found nothing
+        ]
+        out = run("review-wide", {"diff": "d.diff", "segments": segments}, agents)
+        self.assertIsNone(out["error"])
+        self.assertEqual([f["claim"] for f in out["result"]["confirmed"]], ["Returns null for an empty list"])
+        self.assertIn("reviewer across segments", out["result"]["not_run"])
+        self.assertIn("1 candidate findings from 8 of 9 reviewers", out["logs"])
+
     def test_review_wide_refuses_angles_it_does_not_know_instead_of_reviewing_nothing(self):
         for angles in (["nothing"], [], ["security", "test"], "securty"):
             with self.subTest(angles=angles):

@@ -28,6 +28,9 @@ says so. Vendor posts report their own numbers and are marked *(vendor)*.
 - No controlled study of context isolation through subagents.
 - No study of a stronger reviewer against a stronger author.
 - No published evidence for diff size, blast radius or novelty as routing signals.
+- No study of reviewing a very large diff in segments. `review-wide`'s segmented mode rests on
+  context rot (rule 8) and on one vendor's document reviewer [67] *(vendor post; its figures are
+  in an image and a preprint not read)*; it is optional, and the user starts it.
 - No study of regression evals for a personal harness. The eval gate's threshold (a one-sided
   Fisher exact test at p < 0.1, on a few runs per case) is a judgement: with three runs it
   catches a drop to zero or near zero, not a small slide.
@@ -203,3 +206,4 @@ from sandboxing was found, and none for security-review prompts.
 64. Lee et al., *Recursive Self-Improvement through Multi-Agent Self-Supervision*, 2026 — https://arxiv.org/abs/2610.12176 *(read in part)*
 65. NJU-LINK, *Socratic Skill Learning*, 2026 — https://github.com/NJU-LINK/Socratic-Skill-Learning
 66. Sakana AI, *The Agentic Scientist (AI-Scientist-v3)*, 2026 — https://github.com/SakanaAI/AI-Scientist-v3
+67. Google Research, *Analyzing technical documents with Deep Review*, 2026 — https://research.google/blog/analyzing-technical-documents-with-deep-review/

@@ -42,7 +42,10 @@ each with the same diff and one angle named in its brief: correctness and edge c
 the intent, the plan and the existing structure; security; the tests. The angle is a line in
 the brief, not a different agent. A finding two of them report is one finding. For a very
 large diff the user can start `/monerex:review-wide`, which does the same in fixed code and
-puts every finding to a verifier; you do not start it yourself.
+puts every finding to a verifier; you do not start it yourself. When the diff is very large,
+offer its segmented form: `python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/segment_diff.py"
+.monerex/tmp/review.diff` prints the `segments` to pass it; an empty list, when splitting would
+not help, makes it review the whole diff.
 
 If the route sets `cross_family`, write a brief to `.monerex/tmp/second-brief.md` — the diff,
 the plan's *Done when*, and the instruction to flag only what affects correctness or the

@@ -45,7 +45,7 @@ stages that are each T2 or smaller, signed off one at a time.
 |---|---|
 | `/monerex:consult research \| ml \| data <question>` | Puts one question to a specialist: `researcher` (web search and fetch only, no access to your files), `ml-specialist` or `data-scientist`. The claims a decision rests on are checked again before they are used |
 | `/monerex:dispatch <repository> <task>` | Starts a task in another repository as its own background session, after your yes, so several run side by side and each stops at its own gates |
-| `/monerex:review-wide` | A saved workflow: reviewers from several angles on one diff, every finding put to a verifier told to refute it, and the survivors ranked |
+| `/monerex:review-wide` | A saved workflow: reviewers from several angles on one diff, every finding put to a verifier told to refute it, and the survivors ranked. A very large diff can be split first with `scripts/segment_diff.py`: each angle then reviews each part with the whole diff in reach, and one more reviewer looks only at what crosses the parts |
 | `/monerex:audit` | A saved workflow: one question asked of many paths by read-only scouts, each answer that found something checked, and what the sweep missed named |
 | `/monerex:plan-from-angles` | A saved workflow: several independent designs for one task, a judge that recommends one, and the decisions it leaves to you |
 | `/monerex:migrate` | A saved workflow: the same change at many sites, each in its own worktree and checked by a verifier; nothing is merged for you |
