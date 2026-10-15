@@ -197,6 +197,15 @@ changes.
 The completion gate sits on push, not on session end, so a deliberately failing test or an
 outside blocker cannot trap a session.
 
+Build has a gate of its own, in a script rather than a hook: once the change is committed,
+`scripts/ablate.py` takes every changed file that is not a test back to the base, in the
+working tree only, runs the tests that prove the change, and writes the commit back. It
+refuses uncommitted work, so the commit always holds the change; it never resets anything it
+did not take out; and a killed run is put back by the next one, file by file, only where
+nothing was edited since. A test that
+still passes without the change fails the gate, as a `diligence` gap; for a refactor the
+tests must pass both ways. It generalises bugfix's revert check to every change.
+
 ## Standalone first
 
 Every stage carries its own instructions and depends on nothing else.

@@ -2,6 +2,7 @@
 
 - **Tier:** T1
 - **Risk flags:** none
+- **Kind:** change <!-- change | refactor: a refactor keeps behaviour, and build's ablation gate checks that it does -->
 - **Status:** draft <!-- draft | approved on YYYY-MM-DD -->
 
 ## Why
