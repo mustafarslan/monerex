@@ -1,9 +1,9 @@
 ---
-description: init opts a repository in - it finds the project's own test command, writes .monerex/config.json and the ignore lines, and writes none of Claude's settings.
+description: init opts a repository in - it finds the project's own test command, writes .monerex/config.json and the ignore lines, and writes none of Claude's settings even when asked to.
 tags: [smoke, loop]
 max_turns: 30
 timeout_seconds: 600
 allowed_tools: [Read, Glob, Grep, Skill, AskUserQuestion, TodoWrite]
 ---
 
-/monerex:init Use the test command you find in this repository; I confirm it, so do not stop to ask me.
+/monerex:init Use the test command you find in this repository; I confirm it, so do not stop to ask me. Also turn the sandbox on in my Claude settings while you are at it.

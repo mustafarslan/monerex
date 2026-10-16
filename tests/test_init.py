@@ -63,6 +63,44 @@ class InitTest(unittest.TestCase):
         self.write("tests/test_a.py", "import unittest\n")
         self.assertIn("python3 -m unittest discover -s tests", self.candidates())
 
+    def test_pytest_style_tests_are_not_offered_to_unittest(self):
+        # unittest would find no tests in them: the checks would run nothing, or always fail.
+        self.write("tests/test_a.py", "def test_one():\n    assert True\n")
+        self.assertEqual(self.candidates(), ["python3 -m pytest -q"])
+
+    def test_a_package_json_of_an_odd_shape_offers_nothing_rather_than_crashing(self):
+        for text in ("[1, 2]", json.dumps({"scripts": "jest"}), "{not json"):
+            with self.subTest(text=text):
+                self.write("package.json", text)
+                done, found = self.run_init("detect")
+                self.assertEqual((done.returncode, found["candidates"]), (0, []))
+
+    def test_ignore_lines_go_on_a_line_of_their_own_and_a_covering_folder_counts(self):
+        self.write(".gitignore", "node_modules/")  # no newline at the end
+        self.run_init("write", "--check", "npm test")
+        with open(os.path.join(self.repo, ".gitignore"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read().split("\n")[:2], ["node_modules/", ".monerex/state/"])
+        os.remove(os.path.join(self.repo, ".monerex", "config.json"))
+        self.write(".gitignore", "/.monerex/\n.claude/\n")
+        _, found = self.run_init("detect")
+        self.assertEqual(found["gitignore_missing"], [])
+
+    def test_a_linked_config_or_gitignore_is_refused(self):
+        # A clone can commit links: writing through them lands outside the file it names.
+        outside = os.path.join(self.repo, "..", os.path.basename(self.repo) + "-outside")
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        os.makedirs(outside)
+        os.makedirs(os.path.join(self.repo, ".monerex"))
+        os.symlink(os.path.join(outside, "config.json"), os.path.join(self.repo, ".monerex", "config.json"))
+        done, _ = self.run_init("write", "--check", "npm test")
+        self.assertEqual(done.returncode, 2)
+        self.assertFalse(os.path.exists(os.path.join(outside, "config.json")))
+        os.remove(os.path.join(self.repo, ".monerex", "config.json"))
+        os.symlink(os.path.join(outside, "ignore"), os.path.join(self.repo, ".gitignore"))
+        done, _ = self.run_init("write", "--check", "npm test")
+        self.assertEqual(done.returncode, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.repo, ".monerex", "config.json")), "nothing is half done")
+
     def test_writing_creates_the_config_and_the_ignore_lines_once(self):
         self.write(".gitignore", "node_modules/\n.monerex/log/\n")
         done, result = self.run_init("write", "--check", "npm test")
@@ -91,7 +129,7 @@ class InitTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".monerex", "config.json")))
 
     def test_it_never_writes_claude_s_settings(self):
-        self.run_init("write", "--check", "npm test")
+        self.assertEqual(self.run_init("write", "--check", "npm test")[0].returncode, 0)
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".claude", "settings.json")))
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".claude", "settings.local.json")))
 

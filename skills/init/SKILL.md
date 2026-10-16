@@ -16,8 +16,9 @@ folders out of git. Nothing else.
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/init.py" detect
 ```
 
-`opted_in` true → say so, show `.monerex/config.json`, and stop. It is the user's file now,
-and the guard asks before anyone edits it.
+`opted_in` true → say so, show `.monerex/config.json`, and stop; the guard asks before anyone
+edits it. Its `checks` run as shell commands in build, verify and the push gate: if the user
+did not write them (a repository they cloned), say so and ask them to read the commands first.
 
 ## 2. Settle the check command
 
@@ -29,10 +30,13 @@ never write an empty list, which would run every task without checks.
 ## 3. Write
 
 ```sh
-python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/init.py" write --check "<command>"
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/init.py" write --check '<command>'
 ```
 
-Show what it wrote: the config, and the lines it added to `.gitignore`.
+Write only through this script: it refuses what must not be written (an empty list, an
+existing config, a linked file). Single quotes keep the command as the user gave it; a quote
+inside it is written as `'\''`. Show what it wrote: the config, and the lines it added to
+`.gitignore`.
 
 ## 4. Say what is optional
 

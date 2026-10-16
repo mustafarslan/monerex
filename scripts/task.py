@@ -28,6 +28,7 @@ Standard library only.
 import argparse
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -349,19 +350,43 @@ STAGES = {"T0": ["checks"], "T1": ["plan", "build", "verify", "review"],
           "T2": ["intent", "plan", "build", "verify", "review"], "T3": ["intent", "plan", "build", "verify", "review"]}
 
 
+# Stages that build may go on from, as build's step 4 reads them; fail and flaky send it back.
+BUILD_DONE = {"pass", "weak", "skipped", "not-run", "exempt"}
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
+
+
 def checks_record(root):
+    """The last check run, as the push gate reads it: passed, on this commit, with a clean tree."""
+    path = os.path.join(root, ".monerex", "state", "checks.json")
+    if not plain_file(path):
+        return None
     try:
-        with open(os.path.join(root, ".monerex", "state", "checks.json"), encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             record = json.load(handle)
     except (OSError, ValueError):
         return None
+    if not isinstance(record, dict):
+        return None
     done = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True)
-    return {"passed": record.get("passed") is True, "on_this_commit": record.get("head") == done.stdout.decode().strip()}
+    return {"passed": record.get("passed") is True, "on_this_commit": record.get("head") == done.stdout.decode().strip(),
+            "clean": record.get("clean") is True}
+
+
+def accepted(path, word):
+    """Whether a plan or intent file says it was signed off: `**Status:** approved on ...`."""
+    if not plain_file(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return re.search(r"\*\*Status:\*\*\s*%s\b" % word, handle.read(LOG_LIMIT)) is not None
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def status(root):
     """Where the open task stands: the stages behind it and the one to run next."""
-    records = read(root)
+    # A task name is printed into the session: one that is not a plain slug is not read at all.
+    records = [record for record in read(root) if isinstance(record.get("task"), str) and SLUG.match(record["task"])]
     slug = open_task(records)
     if not slug:
         finished = [record.get("task") for record in records if record.get("event") == "done"]
@@ -369,10 +394,9 @@ def status(root):
     start = [record for record in records if record.get("event") == "start" and record.get("task") == slug][-1]
     tier = start.get("tier") if start.get("tier") in STAGES else "T1"
     done = set()
-    if os.path.exists(os.path.join(root, "docs", "work", slug, "intent.md")):
+    # A file is written before its gate: only a signed-off intent, or a logged plan, is behind.
+    if accepted(os.path.join(root, "docs", "work", slug, "intent.md"), "accepted"):
         done.add("intent")
-    if os.path.exists(os.path.join(root, "docs", "work", slug, "plan.md")):
-        done.add("plan")
     for record in records:
         if record.get("task") != slug or record.get("at", 0) < start["at"]:
             continue
@@ -380,7 +404,10 @@ def status(root):
         if event in ("plan", "review"):
             done.add(event)
         elif event == "ablation":
-            done.add("build")
+            if record.get("result") in BUILD_DONE:
+                done.add("build")
+            else:
+                done.discard("build")
         elif event == "checks" and record.get("passed"):
             done.add("checks")
         elif event == "verify":
@@ -398,8 +425,15 @@ def status(root):
 
 def show_status(state):
     checks = state["checks"]
-    line = ("checks: never run here" if checks is None else "checks: %s, %s" % (
-        "passed" if checks["passed"] else "failed", "on this commit" if checks["on_this_commit"] else "on an older commit"))
+    if checks is None:
+        line = "checks: never run here"
+    elif not checks["on_this_commit"]:
+        line = "checks: %s on an older commit" % ("passed" if checks["passed"] else "failed")
+    elif not checks["clean"]:
+        line = "checks: %s on this commit, but with uncommitted changes, so the push gate will not open" % (
+            "passed" if checks["passed"] else "failed")
+    else:
+        line = "checks: %s on this commit" % ("passed" if checks["passed"] else "failed")
     if not state["task"]:
         last = state.get("last_done")
         return "monerex: no open task%s.\n%s" % ("; the last one finished was %s" % last if last else "", line)

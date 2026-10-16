@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 
@@ -30,19 +31,29 @@ def repo_root():
     return done.stdout.decode().strip() or os.getcwd()
 
 
+READ_LIMIT = 1024 * 1024  # a project file larger than this is not one init needs to read
+
+
 def text(root, name):
+    """A file's text when it is a plain file of a sane size; anything else reads as empty."""
+    path = os.path.join(root, name)
     try:
-        with open(os.path.join(root, name), encoding="utf-8") as handle:
-            return handle.read()
+        found = os.lstat(path)
+        if not stat.S_ISREG(found.st_mode) or found.st_size > READ_LIMIT:
+            return ""
+        with open(path, encoding="utf-8") as handle:
+            return handle.read(READ_LIMIT)
     except (OSError, UnicodeDecodeError):
         return ""
 
 
 def node(root):
     try:
-        script = (json.loads(text(root, "package.json") or "{}").get("scripts") or {}).get("test")
+        package = json.loads(text(root, "package.json") or "{}")
     except ValueError:
         return []
+    scripts = package.get("scripts") if isinstance(package, dict) else None
+    script = scripts.get("test") if isinstance(scripts, dict) else None
     if not isinstance(script, str) or not script.strip() or NPM_PLACEHOLDER in script:
         return []
     return [next((runner for lock, runner in RUNNERS if os.path.exists(os.path.join(root, lock))), "npm test")]
@@ -54,9 +65,13 @@ def python(root):
     if pytest:
         return ["python3 -m pytest -q"]
     tests = os.path.join(root, "tests")
-    if os.path.isdir(tests) and any(name.startswith("test") and name.endswith(".py") for name in os.listdir(tests)):
+    files = [name for name in os.listdir(tests) if name.startswith("test") and name.endswith(".py")] if os.path.isdir(tests) else []
+    if not files:
+        return []
+    # unittest finds only TestCase classes: plain `def test_` functions need pytest.
+    if any("unittest" in text(root, os.path.join("tests", name)) for name in files):
         return ["python3 -m unittest discover -s tests"]
-    return []
+    return ["python3 -m pytest -q"]
 
 
 def candidates(root):
@@ -71,8 +86,9 @@ def candidates(root):
 
 
 def ignore_missing(root):
-    present = {line.strip() for line in text(root, ".gitignore").splitlines()}
-    return [line for line in IGNORED if line not in present]
+    """The ignore lines not yet covered, by the line itself or by a folder above it."""
+    present = {line.strip().lstrip("/") for line in text(root, ".gitignore").splitlines()}
+    return [line for line in IGNORED if line not in present and line.split("/")[0] + "/" not in present]
 
 
 def detect(root):
@@ -81,25 +97,31 @@ def detect(root):
 
 
 def write(root, checks):
-    if os.path.exists(os.path.join(root, CONFIG)):
+    if os.path.lexists(os.path.join(root, CONFIG)):
         print("monerex: this repository has opted in already; %s is left as it is" % CONFIG, file=sys.stderr)
         return 2, None
+    for name in (".monerex", ".gitignore"):
+        if os.path.islink(os.path.join(root, name)):
+            print("monerex: %s is a link; writing through it would land outside this repository" % name, file=sys.stderr)
+            return 2, None
     if not checks:
         print("monerex: name the command that runs the tests with --check; without one every task would run "
               "with no checks", file=sys.stderr)
         return 2, None
-    os.makedirs(os.path.join(root, ".monerex"), exist_ok=True)
-    with open(os.path.join(root, CONFIG), "w", encoding="utf-8") as handle:
-        json.dump({"checks": checks, "external_review": "off"}, handle, indent=2)
-        handle.write("\n")
-    wrote = [CONFIG]
+    # The ignore lines first: a config written without them would leave the opt-in half done,
+    # and a second run refuses once the config is there.
     missing = ignore_missing(root)
+    wrote = []
     if missing:
         existing = text(root, ".gitignore")
         with open(os.path.join(root, ".gitignore"), "a", encoding="utf-8") as handle:
             handle.write(("" if not existing or existing.endswith("\n") else "\n") + "\n".join(missing) + "\n")
         wrote.append(".gitignore")
-    return 0, {"wrote": wrote, "checks": checks, "gitignore_added": missing}
+    os.makedirs(os.path.join(root, ".monerex"), exist_ok=True)
+    with open(os.path.join(root, CONFIG), "x", encoding="utf-8") as handle:
+        json.dump({"checks": checks, "external_review": "off"}, handle, indent=2)
+        handle.write("\n")
+    return 0, {"wrote": [CONFIG] + wrote, "checks": checks, "gitignore_added": missing}
 
 
 def main(argv=None):

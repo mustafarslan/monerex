@@ -9,14 +9,15 @@ argument-hint: "<what you want done>, or nothing to see where the open task stan
 You run a task through the monerex loop. Size it first; the size decides everything else.
 
 With no `.monerex/config.json` here, the repository has not opted in: say so, point to
-`/monerex:init`, and stop. With no argument, read `${CLAUDE_SKILL_DIR}/status.md` and follow it.
+`/monerex:init`, and stop. When the user typed `/monerex:start` with nothing after it, read
+`${CLAUDE_SKILL_DIR}/status.md` and follow it; a request in plain words is a task, not this.
 
 ## 1. Look before you size
 
 Once per session, run all four and read the output:
 
 ```sh
-python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/posture.py"
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/posture.py" --once
 git worktree list
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/desk.py" count
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/probe.py"
