@@ -2,8 +2,9 @@
 
 The fixtures under tests/fixtures/graders are the final reports of passing runs of
 `review-cost-grows` and `workflow-review-wide-segments`; the second of the review-wide ones read
-the workflow's result in a form a pattern on the trace missed. Each negative is the near miss a
-grader exists to refuse.
+the workflow's result in a form a pattern on the trace missed. The routing-log lines are written
+here in the hook's own format (sorted keys). Each negative is the near miss a grader exists to
+refuse.
 """
 
 import json
@@ -73,6 +74,19 @@ class GraderTest(unittest.TestCase):
                       "renaming list_orders without an alias breaks web/page.py"):
             with self.subTest(claim=claim):
                 self.assertTrue(crossing.search(result(claim)))
+
+
+class RoutingGraderTest(unittest.TestCase):
+    def log(self, events):
+        return "\n".join(json.dumps({"agent_id": "a%d" % n, "agent_type": "monerex:reviewer", "at": n,
+                                      "hook_event_name": event, "session_id": "s"}, sort_keys=True)
+                         for n, event in enumerate(events)) + "\n"
+
+    def test_five_reviewers_must_have_finished_not_only_started(self):
+        # A reviewer killed mid-run logs a start and no stop; seen in a headless run cut by its budget.
+        finished = grader("workflow-review-wide-segments", "every-part-and-across.md")
+        self.assertTrue(finished.search(self.log(["SubagentStart", "SubagentStop"] * 5)))
+        self.assertFalse(finished.search(self.log(["SubagentStart"] * 5 + ["SubagentStop"] * 4)))
 
 
 if __name__ == "__main__":

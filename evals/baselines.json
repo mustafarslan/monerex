@@ -237,7 +237,7 @@
     "workflow-review-wide-segments": {
       "claude_version": "2.1.301",
       "date": "2026-10-16",
-      "graders": "f5158f34ba27bcb9",
+      "graders": "a7bf92f7b6037831",
       "model": "sonnet",
       "passed": 3,
       "plugin_version": "0.2.0",

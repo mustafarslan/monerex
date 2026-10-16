@@ -19,9 +19,9 @@
   over outside data, and review dispatches its reviewer however small the diff. With an
   architecture gate, the plan carries its constraints and build runs its check (#12).
 - **Review counts need a reviewer that ran** since the latest implementer, verify or review,
-  as verify verdicts need a verifier (#13, #15). An agent counts once it has finished, and from a
-  worktree only when the session that started the task dispatched it; log times are no longer
-  whole seconds.
+  as verify verdicts need a verifier (#13, #15). An agent counts once it has finished (#16), and
+  only when the session logging the record dispatched it, in this checkout or a worktree (#16,
+  #17); log times are no longer whole seconds (#16).
 - **A baseline records its graders.** `evalgate.py` stores a fingerprint of each case's graders
   and does not compare a case whose graders changed since (`other-graders`) (#15).
 - **Baselines at `acc094b`:** 81 of 81 runs across 27 cases; smoke with and without the plugin,
