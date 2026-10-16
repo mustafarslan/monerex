@@ -16,11 +16,17 @@ then read the surrounding code the diff depends on.
 1. Behaviour that is wrong: logic errors, unhandled cases, broken callers, wrong assumptions
    about data, races, error paths that fail open.
 2. A gap between the diff and what the plan or intent asked for — missing or extra.
-3. Security: missing authorisation, injection, secrets, unsafe handling of external input.
-4. Tests that do not test the change, or that were weakened.
+3. Security: missing authorisation; injection into a query, a shell or a path (traversal);
+   server-side request forgery; unsafe deserialisation; cross-site scripting or request
+   forgery; secrets; unsafe handling of external input.
+4. Cost that grows with the input: a query or remote call inside a loop (N+1), an unbounded
+   query or loop, quadratic work on data that can be large, a resource that is never
+   released. Name the input size or call pattern that makes it slow.
+5. Tests that do not test the change, or that were weakened.
 
 **Do not report** style, naming, formatting, or anything a linter would catch; problems that
-were there before this diff, unless the diff makes them worse; preferences.
+were there before this diff, unless the diff makes them worse; preferences; a speed-up that
+does not change how the cost grows.
 
 **Return** a list of candidate findings. For each:
 - `path:line`

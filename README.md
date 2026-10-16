@@ -30,7 +30,7 @@ You type the commands marked *typed*; the others run when the stage before them 
 | **plan** | after `start` or `intent`, for T1 and above | The design, the tasks and the commands that prove it works, in `docs/work/<task>/plan.md` | **the plan**, before any code changes |
 | **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks; the change is committed and taken out once more to prove its tests fail without it | — |
 | **verify** | after `build` | A fresh agent runs the checks itself and compares the diff with the plan | — |
-| **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context: one reviewer, up to four with separate angles for a feature or a risk flag, and a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
+| **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context, cost that grows with the input included: one reviewer, up to four with separate angles for a feature or a risk flag (five when the diff touches a query, a remote call or a loop over outside data), and a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
 | **ship** | typed: `/monerex:ship` | Pushes the branch, writes the pull request text, opens the pull request, watches its checks | **the text**; **the merge** is always yours |
 | **feedback** | typed: `/monerex:feedback [PR]` | Treats each review comment on your pull request as a claim, checks it, fixes what holds, and drafts a reply for every thread | what to fix, and **every reply** |
 | **bugfix** | typed: `/monerex:bugfix <issue>` | A test that fails for the reported symptom, the fix, proof that the test fails again without it, then verify, review and a draft pull request; the test is locked for the rest of the task | the plan and **the pull request text** |
@@ -45,7 +45,7 @@ stages that are each T2 or smaller, signed off one at a time.
 |---|---|
 | `/monerex:consult research \| ml \| data <question>` | Puts one question to a specialist: `researcher` (web search and fetch only, no access to your files), `ml-specialist` or `data-scientist`. The claims a decision rests on are checked again before they are used |
 | `/monerex:dispatch <repository> <task>` | Starts a task in another repository as its own background session, after your yes, so several run side by side and each stops at its own gates |
-| `/monerex:review-wide` | A saved workflow: reviewers from several angles on one diff, every finding put to a verifier told to refute it, and the survivors ranked. A very large diff can be split first with `scripts/segment_diff.py`: each angle then reviews each part with the whole diff in reach, and one more reviewer looks only at what crosses the parts |
+| `/monerex:review-wide` | A saved workflow: reviewers from several angles on one diff, every finding put to a verifier told to refute it, and the survivors ranked; the `performance` angle runs when you name it. A very large diff can be split first with `scripts/segment_diff.py`: each angle then reviews each part with the whole diff in reach, and one more reviewer looks only at what crosses the parts |
 | `/monerex:audit` | A saved workflow: one question asked of many paths by read-only scouts, each answer that found something checked, and what the sweep missed named |
 | `/monerex:plan-from-angles` | A saved workflow: several independent designs for one task, a judge that recommends one, and the decisions it leaves to you |
 | `/monerex:migrate` | A saved workflow: the same change at many sites, each in its own worktree and checked by a verifier; nothing is merged for you |
@@ -181,7 +181,8 @@ no server, sends nothing to its author, and collects no telemetry.
   [capabilities.md](capabilities.md) describes what the `agy-ask` program must do.
 - **An architecture checker (optional).** If the repository has an `oxn.yaml`, `start` asks
   whether `oxn` runs (`oxn` on the PATH, else `python3 -m oxn --version` from a neutral
-  folder), and `plan` and `verify` then run `oxn check` and `oxn arch`.
+  folder), and `plan` and `verify` then run `oxn check` and `oxn arch`; `build` runs
+  `oxn check` on the changed files, through the implementer and again itself.
 - **The web.** Only the `researcher` agent, reached through `/monerex:consult research`, can
   search and fetch web pages. It has no access to your files; its search queries and the
   addresses it fetches go to the search service and those sites, and can carry words from

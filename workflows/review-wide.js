@@ -1,7 +1,7 @@
 export const meta = {
   name: 'review-wide',
   description: 'Review a diff from several angles, try to refute every finding, and rank what survives',
-  whenToUse: 'A large or risky change, when one reviewer is not enough. Pass { diff, plan } with the paths of a saved diff and of the plan it should satisfy. For a very large diff add segments, the output of scripts/segment_diff.py.',
+  whenToUse: 'A large or risky change, when one reviewer is not enough. Pass { diff, plan } with the paths of a saved diff and of the plan it should satisfy. For a very large diff add segments, the output of scripts/segment_diff.py. The performance angle runs only when named in angles.',
   phases: [
     { title: 'Review', detail: 'one reviewer per angle, on the whole diff or on each of its segments' },
     { title: 'Synthesise', detail: 'with segments only: one reviewer on the whole diff, for what crosses them' },
@@ -19,8 +19,10 @@ const ROUTES = {
 const ANGLES = [
   { key: 'correctness', brief: 'behaviour that is wrong: logic errors, unhandled cases, broken callers, error paths that fail open' },
   { key: 'fit', brief: 'gaps between the diff and what the plan asked for, and places where it works against the existing structure' },
-  { key: 'security', brief: 'missing authorisation, injection, secrets, unsafe handling of input from outside' },
+  { key: 'security', brief: 'missing authorisation; injection into a query, a shell or a path; server-side request forgery; unsafe deserialisation; cross-site scripting or request forgery; secrets; unsafe handling of input from outside' },
   { key: 'tests', brief: 'tests that do not test the change, tests that were weakened, behaviour that changed with no test' },
+  // Only when asked: most diffs add no query, remote call or loop over outside data.
+  { key: 'performance', brief: 'cost that grows with the input: a query or remote call inside a loop (N+1), an unbounded query or loop, quadratic work on data that can be large, a resource never released; name the input size that makes it slow', optional: true },
 ]
 
 const FINDINGS = {
@@ -66,7 +68,7 @@ if (input.angles !== undefined) {
     return { error: `angles must be some of: ${known.join(', ')}. Not known: ${unknown.join(', ') || '(none given)'}` }
   }
 }
-const angles = input.angles === undefined ? ANGLES : ANGLES.filter((angle) => [].concat(input.angles).includes(angle.key))
+const angles = input.angles === undefined ? ANGLES.filter((angle) => !angle.optional) : ANGLES.filter((angle) => [].concat(input.angles).includes(angle.key))
 const against = input.plan ? ` against the plan at ${input.plan}` : ''
 
 // Segments split a very large diff so each reviewer reads less (context degrades as it grows);
@@ -86,6 +88,10 @@ if (segments !== undefined) {
 const assignments = segments
   ? angles.flatMap((angle) => segments.map((part) => ({ angle, part })))
   : angles.map((angle) => ({ angle, part: null }))
+const MAX_REVIEWERS = 12
+if (assignments.length > MAX_REVIEWERS) {
+  return { error: `at most ${MAX_REVIEWERS} reviewers by angle, besides the one across segments: ${angles.length} angles on ${segments.length} segments is ${assignments.length}. Drop an angle or a segment` }
+}
 
 phase('Review')
 // A barrier on purpose: findings are merged across every reviewer before anything is verified.

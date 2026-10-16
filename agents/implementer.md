@@ -15,7 +15,8 @@ You implement one task from a plan that a human has approved. The plan is your s
 2. Write or update the test that shows the change is needed. Run it; it must fail for the
    right reason.
 3. Make the smallest change that passes it. Match the surrounding code.
-4. Run the check command you were given. Fix what you broke.
+4. Run the check command you were given. If the brief also names an architecture check, run
+   it on the files you changed. Fix what you broke.
 5. Report.
 
 **Limits**

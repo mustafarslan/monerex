@@ -22,7 +22,8 @@ For T2 and above the accepted intent file is the brief: the plan may not go beyo
 each line under its *How we will know* becomes a line under *Done when*.
 
 If the repository has an architecture gate, run its `check` and `arch` commands and treat
-what they say about the files in scope as constraints on the plan.
+what they say about the files in scope as constraints on the plan. Write them under the
+plan's *Architecture*; the implementer reads them there.
 
 A new or upgraded dependency is named in the plan with its version, why it is needed and what
 else was considered. It needs the user's explicit yes, like the plan itself.
