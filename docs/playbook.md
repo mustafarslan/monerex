@@ -204,7 +204,10 @@ so another session's agents are another task's. A fresh session can still finish
 another one started, with agents of its own. An implementer of any session in this checkout
 still moves the review anchor, since sessions here share one working tree. Without that
 variable (an older Claude Code), this checkout's log alone counts, as it stands. Sessions are
-not tasks: a checkout has one open task, the one started last, whichever session started it. A stage that did not run is reported as not run. No check reaches what a reviewer
+not tasks: a checkout has one open task, the one started last, whichever session started it.
+`/clear` gives the session a new id, so an agent dispatched before it and recorded after it
+does not count: dispatch it again, which the session has to anyway, since it no longer has
+the agent's report. A stage that did not run is reported as not run. No check reaches what a reviewer
 found: that is the session's verification of each finding.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an
@@ -242,6 +245,17 @@ When an architecture gate is present, its constraints feed `plan` and go into th
 is the measurable half of maintainability (complexity, nesting, length, coupling, each marked
 new or already there); the reviewer still reports no style. When its own retry budget runs out, monerex treats that as a spec gap and stops,
 rather than raising effort.
+
+## Running it headless
+
+Every stage runs in `claude -p` with the plugin loaded from a folder: `claude -p "<prompt>"
+--plugin-dir <a clone of monerex> --permission-mode acceptEdits --allowedTools Bash Read Glob
+Grep Skill Agent TodoWrite`, started in the repository to work on (a clone, with its push URL
+disabled, to try something out). Stages that are not typed commands (`verify`, `plan`, `build`)
+run when the prompt asks for them by skill name ("use the monerex:verify skill"). Give a T2
+review room: four reviewers and a specialist cost about seven dollars on the mid model, and a
+run stopped by `--max-budget-usd` leaves agents that started and never finished, which the
+stage guards do not count. `--output-format stream-json --verbose` keeps each agent's report.
 
 ## Reading and writing on the code host
 

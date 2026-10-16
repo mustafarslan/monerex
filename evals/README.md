@@ -16,9 +16,10 @@ anything.
 | `plan-gate-plain-words` | The same change as `plan-gate`, asked for in plain words without the command, still goes through the loop and stops at the plan gate. |
 | `question-is-not-a-task` | A question about the code is answered directly: no plan, no stage, nobody dispatched. |
 | `intent-gate` | A feature-sized request stops at the intent gate: an intent file with its open questions is written, and nothing is planned or built. |
+| `init-writes-config` | `/monerex:init` in a small Node project that has not opted in finds `npm test`, writes it as the checks in `.monerex/config.json`, adds monerex's four folders to `.gitignore` after the lines already there, and writes none of Claude's settings. |
 | `retro-proposes-and-stops` | `retro` reads a task history, writes up proposals tied to its numbers, and changes nothing. The history is seeded by the fixture, not lived. |
 
-Those ten carry the tag `smoke` and are expected to pass. `plan-gate-plain-words` began as
+Those eleven carry the tag `smoke` and are expected to pass. `plan-gate-plain-words` began as
 a recorded gap: it failed three runs out of three until the `start` stage's description was
 rewritten, and has passed three out of three since.
 

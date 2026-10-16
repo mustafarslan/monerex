@@ -7,7 +7,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(ROOT, "skills")
 KNOWN = {"name", "description", "argument-hint", "user-invocable", "disable-model-invocation"}
-MANUAL_ONLY = {"ship", "bugfix", "feedback", "dispatch"}  # they push, post or start sessions
+MANUAL_ONLY = {"ship", "bugfix", "feedback", "dispatch", "init"}  # they push, post, start sessions or opt a repository in
 INTERNAL = {"route", "plan", "build", "verify", "intent"}  # reached through start
 
 

@@ -1,26 +1,30 @@
 ---
 name: start
 description: Front door for every code change in a repository that uses monerex (it has a .monerex/config.json). Invoke this first, before reading or editing any file, whenever the user asks to add, build, change, fix or refactor something, even when they ask in plain words and do not type the command. It sizes the task, checks the security posture, and runs the gated plan, build, verify and review stages. Do not edit code for such a request without it.
-argument-hint: "<what you want done>"
+argument-hint: "<what you want done>, or nothing to see where the open task stands"
 ---
 
 # Start
 
 You run a task through the monerex loop. Size it first; the size decides everything else.
 
+With no `.monerex/config.json` here, the repository has not opted in: say so, point to
+`/monerex:init`, and stop. When the user typed `/monerex:start` with nothing after it, read
+`${CLAUDE_SKILL_DIR}/status.md` and follow it; a request in plain words is a task, not this.
+
 ## 1. Look before you size
 
 Once per session, run all four and read the output:
 
 ```sh
-python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/posture.py"
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/posture.py" --once
 git worktree list
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/desk.py" count
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/probe.py"
 ```
 
-**Posture.** If it lists gaps, tell the user in two lines what is missing and offer, in this
-order: turn the sandbox on with `/sandbox`; paste the profile into this repository's
+**Posture.** A one-line summary means the gaps were shown before: repeat that line and go on.
+If it lists gaps, tell the user in two lines what is missing and offer, in this order: turn the sandbox on with `/sandbox`; paste the profile into this repository's
 `.claude/settings.local.json` themselves (show the exact JSON from `SECURITY.md`); an
 alternative (dev container, virtual machine, cloud session); or carry on without. **Never
 write a settings file yourself**, not even when asked to: changing Claude's permission

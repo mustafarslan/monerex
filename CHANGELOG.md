@@ -29,8 +29,15 @@
 - **`python3 -P -m oxn`.** Without the `oxn` program on the PATH, the probe reports a command
   that cannot run a repository's own `oxn.py`, which plan, build and verify run from the
   repository (#13).
+- **`/monerex:init` opts a repository in:** it finds the test command (npm, pnpm, yarn, bun,
+  pytest, unittest, make, go, cargo), writes `.monerex/config.json` after the user confirms it,
+  and adds the ignore lines. It never writes Claude's settings or installs git hooks.
+- **`/monerex:start` with no argument says where the open task stands** and what comes next
+  (`task.py status`).
+- **The security profile gaps are listed in full once,** and again only when they change; in
+  between, one line.
 - **Review quotes `oxn review`.** With an architecture gate and committed work, the review
-  report carries what `oxn review --base` measured, as a report and never a gate.
+  report carries what `oxn review --base` measured, as a report and never a gate (#16).
 
 ## 0.2.0: first public release
 

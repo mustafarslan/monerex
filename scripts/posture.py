@@ -4,8 +4,15 @@
 Reads the settings files that apply to this repository and prints what is
 missing. It never blocks: the exit code is always 0. `--json` prints the
 result for a skill to read.
+
+With `--once` (what `start` passes), the list is printed in full the first
+time and whenever it changes, and in one line otherwise: a warning that never
+changes is one people learn to skip. What was shown is kept in the user's own
+state folder, per checkout, never in the repository, where a clone could plant
+a record to hide the list or a link to overwrite a file.
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -82,15 +89,57 @@ def main(argv):
         sys.stdout.write("\n")
         return 0
     if not result["missing"]:
+        forget(repo_root())
         print("monerex: the sandbox and permission profile is in place.")
         if not result["strict"]:
             print("  note: hosts off the list are approved case by case, not refused. See SECURITY.md.")
         return 0
+    if "--once" not in argv or not seen_before(repo_root(), result["missing"]):
+        print_gaps(result)
+    else:
+        print("monerex: security profile: %d gaps, unchanged since they were listed (`posture.py` lists them, SECURITY.md)."
+              % len(result["missing"]))
+    return 0
+
+
+def seen_path(root):
+    """The user's own record of what was shown for this checkout, outside every repository."""
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "monerex", "posture", hashlib.sha256(os.path.realpath(root).encode("utf-8")).hexdigest()[:24])
+
+
+def seen_before(root, missing):
+    """Whether this list of gaps was shown for this checkout already; records it when it was not."""
+    fingerprint = hashlib.sha256("\n".join(sorted(missing)).encode("utf-8")).hexdigest()
+    path = seen_path(root)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            if handle.read(100).strip() == fingerprint:
+                return True
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(fingerprint + "\n")
+    except OSError:
+        pass
+    return False
+
+
+def forget(root):
+    """No gaps: a later relapse is new, and is listed in full."""
+    try:
+        os.remove(seen_path(root))
+    except OSError:
+        pass
+
+
+def print_gaps(result):
     print("monerex: security profile gaps (work continues either way):")
     for name in result["missing"]:
         print("  - not set: " + name)
     print("See SECURITY.md for the profile and the alternatives.")
-    return 0
 
 
 if __name__ == "__main__":

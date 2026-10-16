@@ -8,6 +8,7 @@
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
   task.py event ablation --result exempt   a T0 has no gate; ablate.py logs every other result itself
   task.py event done
+  task.py status [--json]                  the open task: the stages behind it and the next one
   task.py summary [--days N] [--json]
   task.py proposal accept --id R2026-10-15-1 --retro retro-2026-10-15 --metric T1.escalated_share \
       --baseline 0.5 --direction down --change "routing/routing.json: implement starts at large"
@@ -27,6 +28,7 @@ Standard library only.
 import argparse
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -344,6 +346,103 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
                and record.get("agent_id") in finished for record in dispatches)
 
 
+STAGES = {"T0": ["checks"], "T1": ["plan", "build", "verify", "review"],
+          "T2": ["intent", "plan", "build", "verify", "review"], "T3": ["intent", "plan", "build", "verify", "review"]}
+
+
+# Stages that build may go on from, as build's step 4 reads them; fail and flaky send it back.
+BUILD_DONE = {"pass", "weak", "skipped", "not-run", "exempt"}
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
+
+
+def checks_record(root):
+    """The last check run, as the push gate reads it: passed, on this commit, with a clean tree."""
+    path = os.path.join(root, ".monerex", "state", "checks.json")
+    if not plain_file(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    done = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True)
+    return {"passed": record.get("passed") is True, "on_this_commit": record.get("head") == done.stdout.decode().strip(),
+            "clean": record.get("clean") is True}
+
+
+def accepted(path, word):
+    """Whether a plan or intent file says it was signed off: `**Status:** approved on ...`."""
+    if not plain_file(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return re.search(r"\*\*Status:\*\*\s*%s\b" % word, handle.read(LOG_LIMIT)) is not None
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def status(root):
+    """Where the open task stands: the stages behind it and the one to run next."""
+    # A task name is printed into the session: one that is not a plain slug is not read at all.
+    records = [record for record in read(root) if isinstance(record.get("task"), str) and SLUG.match(record["task"])]
+    slug = open_task(records)
+    if not slug:
+        finished = [record.get("task") for record in records if record.get("event") == "done"]
+        return {"task": None, "last_done": finished[-1] if finished else None, "checks": checks_record(root)}
+    start = [record for record in records if record.get("event") == "start" and record.get("task") == slug][-1]
+    tier = start.get("tier") if start.get("tier") in STAGES else "T1"
+    done = set()
+    # A file is written before its gate: only a signed-off intent, or a logged plan, is behind.
+    if accepted(os.path.join(root, "docs", "work", slug, "intent.md"), "accepted"):
+        done.add("intent")
+    for record in records:
+        if record.get("task") != slug or record.get("at", 0) < start["at"]:
+            continue
+        event = record.get("event")
+        if event in ("plan", "review"):
+            done.add(event)
+        elif event == "ablation":
+            if record.get("result") in BUILD_DONE:
+                done.add("build")
+            else:
+                done.discard("build")
+        elif event == "checks" and record.get("passed"):
+            done.add("checks")
+        elif event == "verify":
+            # A failed verify sends the task back to build; a passed one closes build too.
+            if record.get("verdict") == "pass":
+                done.update({"build", "verify"})
+            else:
+                done.difference_update({"build", "verify"})
+    stages = STAGES[tier]
+    behind = [stage for stage in stages if stage in done]
+    pending = [stage for stage in stages if stage not in done]
+    return {"task": slug, "tier": tier, "risk": bool(start.get("risk")), "done": behind,
+            "next": pending[0] if pending else "done", "checks": checks_record(root)}
+
+
+def show_status(state):
+    checks = state["checks"]
+    if checks is None:
+        line = "checks: never run here"
+    elif not checks["on_this_commit"]:
+        line = "checks: %s on an older commit" % ("passed" if checks["passed"] else "failed")
+    elif not checks["clean"]:
+        line = "checks: %s on this commit, but with uncommitted changes, so the push gate will not open" % (
+            "passed" if checks["passed"] else "failed")
+    else:
+        line = "checks: %s on this commit" % ("passed" if checks["passed"] else "failed")
+    if not state["task"]:
+        last = state.get("last_done")
+        return "monerex: no open task%s.\n%s" % ("; the last one finished was %s" % last if last else "", line)
+    done = ", ".join(state["done"]) or "nothing yet"
+    upcoming = "log `event done`" if state["next"] == "done" else state["next"]
+    return "monerex: task %s (%s%s): done %s; next: %s.\n%s" % (
+        state["task"], state["tier"], ", risk" if state["risk"] else "", done, upcoming, line)
+
+
 def show(result):
     summary = result["tiers"]
     lines = ["the last %d days" % result["days"] if result["days"] else "everything logged in this checkout"]
@@ -409,6 +508,8 @@ def main(argv=None):
     event.add_argument("--result", choices=ABLATION_RESULTS, help="for an ablation: the gate's result")
     for kind in ("confirmed", "plausible", "rejected"):
         event.add_argument("--" + kind, type=int)
+    current = actions.add_parser("status")
+    current.add_argument("--json", action="store_true")
     summary = actions.add_parser("summary")
     summary.add_argument("--json", action="store_true")
     summary.add_argument("--days", type=int, help="look back this many days; everything when left out")
@@ -437,6 +538,10 @@ def main(argv=None):
         print("monerex: recorded proposal %s; the summary judges it by %s tasks started from now on" % (args.id, tier))
         return 0
 
+    if args.action == "status":
+        state = status(root)
+        print(json.dumps(state, indent=2) if args.json else show_status(state))
+        return 0
     if args.action == "summary":
         if args.days is not None and args.days <= 0:
             parser.error("--days must be a positive number")
