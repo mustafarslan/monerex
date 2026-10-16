@@ -1496,6 +1496,20 @@ class HookTest(unittest.TestCase):
         self.assertEqual(record["agent_type"], "monerex:implementer")
         self.assertEqual(record["hook_event_name"], "SubagentStart")
 
+    def test_agent_records_carry_what_the_stage_guards_match_on(self):
+        # task.py counts a finished agent of the task's session: the id, the session and a stop.
+        for event in ("SubagentStart", "SubagentStop"):
+            self.assert_allowed(self.run_hook("agent-log", subagent=True, hook_event_name=event))
+        with open(os.path.join(self.repo, ".monerex", "log", "routing.jsonl"), encoding="utf-8") as handle:
+            records = [json.loads(line) for line in handle]
+        self.assertEqual([(r["hook_event_name"], r["agent_id"], r["session_id"]) for r in records],
+                         [("SubagentStart", "a1", "s1"), ("SubagentStop", "a1", "s1")])
+        self.assertIsInstance(records[0]["at"], float, "whole seconds cannot order a dispatch against a record")
+
+    def test_a_task_the_guard_starts_records_the_session(self):
+        self.assert_allowed(self.edit("docs/work/accounts/plan.md", content="- **Tier:** T1\n"))
+        self.assertEqual([r.get("session") for r in self.tasks_logged()], ["s1"])
+
     def commits_logged(self):
         path = os.path.join(self.repo, ".monerex", "log", "commits.jsonl")
         if not os.path.exists(path):

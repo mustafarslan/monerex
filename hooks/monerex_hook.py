@@ -356,11 +356,11 @@ def pre_edit(data, root):
         return 0
     if elsewhere:
         return restricted(data, "%s is %s, in a checkout inside this one." % elsewhere)
-    note_task(root, relative, tool_input)
+    note_task(root, relative, tool_input, data.get("session_id"))
     return 0
 
 
-def note_task(root, relative, tool_input):
+def note_task(root, relative, tool_input, session=None):
     """A plan or an intent file is where a task becomes real: make sure the log has its start.
 
     The stages log the start themselves, but a model sometimes skips that line. Writing the
@@ -384,7 +384,7 @@ def note_task(root, relative, tool_input):
                 pass
         tier = re.search(r"\*\*Tier:\*\*\s*(T[0-3])", text)
         fallback = "T2" if match.group(2) == "intent" else "T1"
-        task.append(root, "start", slug=slug, tier=tier.group(1) if tier else fallback, noted_by="the guard")
+        task.append(root, "start", slug=slug, tier=tier.group(1) if tier else fallback, noted_by="the guard", session=session)
     except Exception:
         pass  # the log never gets in the way of an edit
 

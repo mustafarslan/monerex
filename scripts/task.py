@@ -27,6 +27,7 @@ Standard library only.
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -291,6 +292,13 @@ def eval_gate(records):
     return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
+def plain_file(path):
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def worktree_roots(root):
     """This checkout first, then every other worktree of its repository."""
     done = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"], capture_output=True)
@@ -315,6 +323,8 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
     dispatches = read(root, "routing.jsonl")
     if session:
         for tree in worktree_roots(root)[1:]:
+            if not plain_file(log_path(tree, "routing.jsonl")):
+                continue  # a branch can commit anything there: a FIFO would hang this, /dev/zero would fill memory
             dispatches += [record for record in read(tree, "routing.jsonl") if record.get("session_id") == session]
     finished = {record.get("agent_id") for record in dispatches if record.get("hook_event_name") == "SubagentStop"}
     dispatches = [record for record in dispatches

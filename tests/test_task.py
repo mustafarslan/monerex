@@ -460,6 +460,26 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch_in(tree, "monerex:implementer", "session-b")
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
+    def test_this_session_s_implementer_in_a_worktree_needs_a_review_after_it(self):
+        tree = self.worktree("mine")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "l", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        self.dispatch_in(tree, "monerex:implementer", "session-a")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+        self.dispatch_in(tree, "monerex:reviewer", "session-a")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_a_worktree_log_that_is_not_a_plain_file_is_not_read(self):
+        # A branch can commit anything under .monerex/log: a FIFO there would hang the guard.
+        tree = self.worktree("odd")
+        os.makedirs(os.path.join(tree, ".monerex", "log"))
+        os.mkfifo(os.path.join(tree, ".monerex", "log", "routing.jsonl"))
+        self.run_script(TASK, "event", "start", "--slug", "m", "--tier", "T1")
+        done = subprocess.run([sys.executable, "-I", TASK, "event", "verify", "--verdict", "pass"], cwd=self.repo,
+                              env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(done.returncode, 2)
+
     def test_a_task_started_without_a_session_counts_only_this_checkout(self):
         tree = self.worktree("w")
         env = dict(self.env)

@@ -91,8 +91,8 @@ no longer there.
 - **Improvement** — worth doing, not blocking.
 - **Nit** — at most three.
 - **Rejected** — one line each, so the user can see what was dismissed.
-- **Architecture (measured)** — with an architecture gate, `.monerex/tmp/oxn-review.txt` as it
-  is. Its numbers are the tool's: quote them, never restate them.
+- **Architecture (measured)** — what `oxn.md` measured in this review, as it is; its numbers are
+  the tool's, never restated. When it did not run, its reason goes under *Not run*.
 - **Not run** — any reviewer or check that was skipped, and why.
 - **Merge?** — your recommendation. The decision is the user's.
 
