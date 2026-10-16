@@ -248,6 +248,12 @@ rather than raising effort.
 
 ## Running it headless
 
+Run it unattended only inside a sandbox or a container. The command below approves edits and
+every shell command ahead of time, and with nobody watching, text in the repository that
+steers the session (an issue, a planted file) meets no prompt; monerex's hooks are early
+warnings, not that boundary. Turn the sandbox on (`/sandbox`, SECURITY.md) or use a dev
+container or a throwaway machine first.
+
 Every stage runs in `claude -p` with the plugin loaded from a folder: `claude -p "<prompt>"
 --plugin-dir <a clone of monerex> --permission-mode acceptEdits --allowedTools Bash Read Glob
 Grep Skill Agent TodoWrite`, started in the repository to work on (a clone, with its push URL
