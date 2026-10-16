@@ -24,10 +24,18 @@ noticing an attack. [The evidence](docs/evidence.md#security) is why.
 
 A plugin ships skills, agents, hooks and workflows. It **cannot** ship sandbox or permission
 settings. Installing monerex does not turn a sandbox on. Monerex documents the profile below,
-`/monerex:start` checks whether it is in place (it reads the repository's and your
-user settings files, and writes none of them), and when it is not, monerex warns, shows the
+and `/monerex:start` checks six of its settings (sandbox on, unsandboxed retry off, fail when
+the sandbox cannot start, no host approved in advance, a push always asks, secrets files
+cannot be read) in the repository's and your user settings files. It does not see the rest
+of the profile (`excludedCommands`, the credential and `gh` rules) or settings passed with
+`--settings`, so "in place" means those six. When gaps remain, monerex warns, shows the
 profile for you to apply with `/sandbox` or by pasting it, explains the alternatives, and
-carries on. It never writes a settings file and never blocks on a missing sandbox.
+carries on. It never writes a settings file and never blocks on a missing sandbox. It lists
+the gaps in full the first time and when they change, and in one line otherwise; which list
+it showed is kept per checkout under `~/.local/state/monerex/posture/` (or `$XDG_STATE_HOME`),
+a fingerprint of the gap names and nothing else, outside the repository so a clone cannot
+plant a record that hides the list or a link that overwrites a file. Closing every gap
+deletes it.
 
 ## Threats and controls
 
@@ -37,10 +45,10 @@ carries on. It never writes a settings file and never blocks on a missing sandbo
 | **Excess privilege** | Explicit tool lists per agent. Only the main session pushes or posts, after a gate. | **built**, checked live |
 | **Exfiltration and secrets** | Sandbox profile that closes the file system outside the project and puts every network host behind an approval; deny-read rules for secrets files; secret scan on commit and push. | profile below, exercised once; it does not block the network outright; scan **built** |
 | **Confidential names reaching a repo** | Private denylist scanned by git's own hooks on commit and push. | **built** |
-| **Code leaving the machine** to a second reviewer or a web tool | Per-repo policy `external_review: off / diff-only / on`, default off. The only agent with web tools cannot read the repository; a web request carrying a denylisted term or a secret is refused. | **built**: the brief is scanned before it leaves, and under `diff-only` the second reviewer starts in a scratch folder holding only the brief |
+| **Code leaving the machine** to a second reviewer or a web tool | Per-repo policy `external_review: off / diff-only / on`, default off. The only agent with web tools cannot read the repository; a web request carrying a denylisted term or a secret is refused. | **built**: the brief is scanned before it leaves; under `diff-only` the second reviewer starts in a scratch folder holding only the brief, a starting point rather than a wall, and under `on` it starts in the repository |
 | **An agent that reads the web** — untrusted pages and an outbound channel in one context | `researcher` has web search and fetch and nothing else: no file tools, no shell, and no instruction files or memory in its context. What it knows is its brief. Its report is untrusted text; `consult` re-checks the claims a decision rests on in a second run before they are used. | **built**, checked live |
 | **Destructive actions** | Shell guard: no force-push, no push to the default branch, no `--no-verify`, no merging a pull request. The pre-push hook refuses a push to the default branch from the refs git really pushes, in a clone where it is installed and left in place; one command removes it, so it stops accidents, not an agent set on getting round it. Branch protection on the remote is the only stop that is not on this machine; GitHub offers it for a private repository only on a paid plan. | guard and pre-push rule **built** |
-| **Agent rewriting its own guards** | Edits to `.claude/`, `.mcp.json`, instruction files, `.git/`, hook scripts and CI workflows: denied for subagents, asked for the main session. Paths are resolved through symlinks. | **built**, checked live |
+| **Agent rewriting its own guards** | Edits to `.claude/`, `.mcp.json`, instruction files, `.git/`, hook scripts, CI workflows (`.github/`, `.gitlab-ci.yml`), editor settings (`.vscode/`), `.monerex/config.json` and `.monerex/state/`: denied for subagents, asked for the main session. Paths are resolved through symlinks. | **built**, checked live |
 | **Supply chain** | Lockfiles are closed unless the plan lists them; hooks are standard-library Python with no network. A new or upgraded dependency is a risk flag that needs your explicit yes, and optional capabilities are a named list (`capabilities.md`), not whatever is installed. | lockfile guard **built** |
 | **Insecure generated code** | Threat note in the plan for risk-flagged work; security dimension in review; deterministic scanners where the repo has them. Model review supplements them and is never the gate. | threat note and review **built**; scanners planned |
 | **Tasks side by side** — several sessions, several repositories, one person approving | Each task is its own session in its own repository, or in its own worktree when the repository already has one; no session can approve for you or read another's work. The count of open tasks is a number: names and directories of other sessions are never printed. A limit on open tasks asks before it is passed. | **built**. Under the sandbox profile a session can neither start another one nor read the session list (both observed): the command is handed to you to run, and the count says it cannot tell instead of reporting zero. A full dispatch has not been exercised |
@@ -159,11 +167,13 @@ request, in a repository that has opted in with a `.monerex/config.json`. Withou
   redirection into it, inside `sh -c` and `eval` too. Another repository's hooks, a bare
   one's, and a copy made from a hook are not refused. A script, an alias that runs one, a key built
   from a variable, or any program the guard does not know still does it.
-- **Log:** after a commit made through the shell tool, one line goes to
+- **Logs:** after a commit made through the shell tool, one line goes to
   `.monerex/log/commits.jsonl`: commit, branch, changed paths, session and the agents that ran
-  in it. The log is local; add `.monerex/log/` to the repository's `.gitignore`, as the
-  README says. The task log beside it holds stage events as
-  counts and labels, and the dispatch log points at agent transcripts without copying them.
+  in it. Beside it: `tasks.jsonl` (stage events as counts and labels), `routing.jsonl` (each
+  agent's start and stop, pointing at its transcript without copying it), `guard.jsonl` (what
+  a guard refused or saw changed), `config-changes.jsonl` and `evalgate.jsonl`. The logs are
+  local and git-ignored (`/monerex:init` adds the lines). Two outputs are committed instead:
+  `.monerex/proposals.jsonl`, the retro changes you accepted, and `evals/baselines.json`.
 - **Code host:** a command that acts on one repository (pull requests, issues, runs and the
   like) must name it with `--repo`, or it is asked about, and refused to a subagent. A
   command that lists what an account belongs to, or searches across every organisation it
@@ -363,11 +373,42 @@ claude --settings '{"sandbox":{"network":{"strictAllowlist":true}}}'
 ```
 
 That flag is described in the product documentation and has not been tried here. With it on,
-anything that needs the network from a shell — a package install, a second-opinion tool, a
-headless run of the CLI — must be added to `excludedCommands` or run by you.
+anything that needs the network from a shell — a package install, a second-opinion tool, the
+eval runner — must be added to `excludedCommands` or run by you. Not a headless Claude
+session: `claude -p` with pre-approved tools approves every shell command it will run, so it
+belongs *inside* the sandbox or a container, never excluded from it (the playbook's
+"Running it headless").
 
 If the sandbox breaks a tool you need — containers and git over SSH are the known cases — the
 alternatives are a dev container, a virtual machine, or a cloud session.
+
+## What monerex runs and reads on your behalf
+
+- **Your checks are shell commands.** `checks` in `.monerex/config.json` run through the shell
+  in build, verify and the push gate, and build's ablation gate runs the plan's test commands
+  the same way. The file is committed, so a repository you clone brings its own: opting in is
+  trusting them. `/monerex:init` shows them, and asks you to read them if you did not write
+  them.
+- **Build's ablation gate edits the working tree.** On committed work only, it takes every
+  changed file that is not a test, a lockfile, a test-runner manifest or a path you keep back
+  to the base, runs the tests, and writes the files back from the commit, with new
+  modification times. It refuses uncommitted work and a test that changes tracked files.
+- **The evals run code from the repository.** `evalgate.py run` starts `claude plugin eval`
+  with `--trust-plugin --scaffold`, so each case's `fixture.sh` runs as you; it is for the
+  plugin's own development, started by you, with a cost ceiling.
+- **The architecture gate.** The probe runs `oxn --version` and `oxn explain --help` from a
+  neutral folder; without the `oxn` program it uses `python3 -P -m oxn`, where `-P` (Python
+  3.11) keeps a repository's own `oxn.py` from running in its place. What oxn prints goes into
+  plans and review reports as it is.
+- **Repository state is data.** What monerex reads back from files a repository can carry is
+  bounded and filtered: another worktree's routing log is read only as a plain file of at most
+  64 MiB, and only the agents of the session recording a stage count; task names and retro
+  proposal ids are printed only when they are plain names, and a proposal's text only as one
+  short line; `init` refuses a linked `.monerex` or `.gitignore`. The stage records guard
+  against forgetting a stage, not against forging one: `.monerex/log/` is not a protected
+  path, and a shell command can append to it.
+- **A plan or intent file starts a task.** Writing `docs/work/<task>/plan.md` or `intent.md`
+  logs the task's start, with the session that wrote it.
 
 ## Reporting
 
