@@ -195,12 +195,14 @@ changes.
 | A plan or intent file is written | The task's start is logged if no task is open. |
 
 Two stage records are held in `scripts/task.py` rather than in a hook: a verify verdict is
-refused unless a `monerex:verifier` was dispatched since the task started, and review counts
-unless a `monerex:reviewer` was dispatched since the latest implementer, verify or review. Both read this checkout's
-routing log only: an agent dispatched from a worktree is logged there, and is not counted,
-because a worktree's log also holds other tasks' dispatches and none names its task. A stage
-that did not run is reported as not run. The guard sees that a reviewer started, not what it was asked or
-whether its findings were used.
+refused unless a `monerex:verifier` ran since the task started, and review counts unless a
+`monerex:reviewer` ran since the latest implementer, verify or review. "Ran" means it started
+and finished: an agent cut off before it reported does not count. The guards read this
+checkout's routing log, and each worktree's only for the session that started the task (`start`
+records `CLAUDE_CODE_SESSION_ID`, the id the hook logs with every dispatch), since a worktree
+also holds other tasks' agents. Two sessions working one task in one checkout are not told
+apart. A stage that did not run is reported as not run. No check reaches what a reviewer
+found: that is the session's verification of each finding.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an
 outside blocker cannot trap a session.
@@ -232,8 +234,10 @@ not run:
 Monerex uses only what that page names. It does not go looking for other installed skills.
 
 When an architecture gate is present, its constraints feed `plan` and go into the plan's
-*Architecture* section, `build` runs its check on the changed files, and its deep check joins
-`verify`. When its own retry budget runs out, monerex treats that as a spec gap and stops,
+*Architecture* section, `build` runs its check on the changed files, its deep check joins
+`verify`, and `review` quotes what `review --base` measured, as a report and not a gate. That
+is the measurable half of maintainability (complexity, nesting, length, coupling, each marked
+new or already there); the reviewer still reports no style. When its own retry budget runs out, monerex treats that as a spec gap and stops,
 rather than raising effort.
 
 ## Reading and writing on the code host

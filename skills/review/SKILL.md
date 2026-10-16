@@ -25,6 +25,9 @@ If git fails, the file holds an error message, not a diff: do not hand it to a r
 the reviewer the plan and the list of files the task changed instead, and report "no diff
 available" under *Not run*.
 
+With an architecture gate (the start probe reported one), read `${CLAUDE_SKILL_DIR}/oxn.md`
+and follow it.
+
 ## 2. Dispatch
 
 Run `monerex:route` with `--work review`, `--author <tier>` when you know it, and `--risk` when
@@ -88,6 +91,8 @@ no longer there.
 - **Improvement** — worth doing, not blocking.
 - **Nit** — at most three.
 - **Rejected** — one line each, so the user can see what was dismissed.
+- **Architecture (measured)** — with an architecture gate, `.monerex/tmp/oxn-review.txt` as it
+  is. Its numbers are the tool's: quote them, never restate them.
 - **Not run** — any reviewer or check that was skipped, and why.
 - **Merge?** — your recommendation. The decision is the user's.
 

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASK = os.path.join(ROOT, "scripts", "task.py")
@@ -232,7 +233,8 @@ class CommandLineTest(unittest.TestCase):
     def setUp(self):
         self.repo = os.path.realpath(tempfile.mkdtemp(prefix="monerex-task-"))
         self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
-        self.env = dict(os.environ)
+        # The session this test plays; the one running the tests must not leak in.
+        self.env = dict(os.environ, CLAUDE_CODE_SESSION_ID="session-a")
         for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
             self.env.pop(name, None)
         for args in (("init", "-q"), ("config", "user.name", "T"), ("config", "user.email", "t@example.invalid")):
@@ -343,12 +345,14 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.events()[-1]["result"], "exempt")
         self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "great").returncode, 2)
 
-    def dispatch(self, agent_type):
+    def dispatch(self, agent_type, finished=True):
         import time
 
         os.makedirs(os.path.join(self.repo, ".monerex", "log"), exist_ok=True)
         with open(os.path.join(self.repo, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"at": int(time.time()), "hook_event_name": "SubagentStart", "agent_type": agent_type}) + "\n")
+            agent = uuid.uuid4().hex
+            for event in ("SubagentStart",) + (("SubagentStop",) if finished else ()):
+                handle.write(json.dumps({"at": time.time(), "hook_event_name": event, "agent_type": agent_type, "agent_id": agent}) + "\n")
 
     def test_a_verify_verdict_needs_a_verifier_that_ran(self):
         # Seen in a live run: with git unavailable the session logged "verify pass" without dispatching anyone.
@@ -366,7 +370,6 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch("monerex:verifier")
         import time
 
-        time.sleep(1.1)
         self.run_script(TASK, "event", "start", "--slug", "b", "--tier", "T1")
         self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "fail").returncode, 2)
 
@@ -389,7 +392,6 @@ class CommandLineTest(unittest.TestCase):
 
         self.run_script(TASK, "event", "start", "--slug", "d", "--tier", "T1")
         self.dispatch("monerex:reviewer")
-        time.sleep(1.1)
         self.dispatch("monerex:verifier")
         self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
@@ -405,7 +407,6 @@ class CommandLineTest(unittest.TestCase):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.run_script(TASK, "event", "start", "--slug", "f", "--tier", "T1")
         self.dispatch("monerex:reviewer")
-        time.sleep(1.1)
         self.dispatch("monerex:implementer")
         refused = self.run_script(TASK, "event", "review", *counts)
         self.assertEqual(refused.returncode, 2)
@@ -419,10 +420,63 @@ class CommandLineTest(unittest.TestCase):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.run_script(TASK, "event", "start", "--slug", "g", "--tier", "T1")
         self.dispatch("monerex:reviewer")
-        time.sleep(1.1)  # times are whole seconds: a reviewer in the same second as the record counts for both
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
-        time.sleep(1.1)
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+
+    def worktree(self, name):
+        if not os.path.exists(os.path.join(self.repo, "a.txt")):
+            with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as handle:
+                handle.write("a\n")
+            for args in (["add", "-A"], ["commit", "-q", "-m", "a"]):
+                subprocess.run(["git", *args], cwd=self.repo, env=self.env, capture_output=True, check=True)
+        tree = os.path.join(self.repo, ".claude", "worktrees", name)
+        subprocess.run(["git", "worktree", "add", "-q", "-b", name, tree], cwd=self.repo, env=self.env, capture_output=True, check=True)
+        return tree
+
+    def dispatch_in(self, tree, agent_type, session):
+        import time
+
+        os.makedirs(os.path.join(tree, ".monerex", "log"), exist_ok=True)
+        with open(os.path.join(tree, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
+            for event in ("SubagentStart", "SubagentStop"):
+                handle.write(json.dumps({"at": time.time(), "hook_event_name": event, "agent_type": agent_type,
+                                         "agent_id": "%s-%s" % (agent_type, session), "session_id": session}) + "\n")
+
+    def test_a_worktree_dispatch_counts_only_for_the_session_that_started_the_task(self):
+        # The hook logs a dispatch where it ran; another session's worktree holds another task's agents.
+        mine, theirs = self.worktree("mine"), self.worktree("theirs")
+        self.run_script(TASK, "event", "start", "--slug", "h", "--tier", "T1")
+        self.assertEqual(self.events()[-1]["session"], "session-a")
+        self.dispatch_in(theirs, "monerex:verifier", "session-b")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 2)
+        self.dispatch_in(mine, "monerex:verifier", "session-a")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+
+    def test_another_session_s_implementer_does_not_move_this_task_s_review_anchor(self):
+        tree = self.worktree("theirs")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "i", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        self.dispatch_in(tree, "monerex:implementer", "session-b")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_a_task_started_without_a_session_counts_only_this_checkout(self):
+        tree = self.worktree("w")
+        env = dict(self.env)
+        env.pop("CLAUDE_CODE_SESSION_ID")
+        subprocess.run([sys.executable, "-I", TASK, "event", "start", "--slug", "j", "--tier", "T1"], cwd=self.repo, env=env,
+                       capture_output=True, check=True)
+        self.dispatch_in(tree, "monerex:verifier", None)
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 2)
+
+    def test_an_agent_that_started_and_never_finished_does_not_count(self):
+        # Seen in a headless run: a budget cut stopped the reviewers before they reported.
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "k", "--tier", "T1")
+        self.dispatch("monerex:reviewer", finished=False)
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]

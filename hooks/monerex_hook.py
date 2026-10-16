@@ -1580,7 +1580,7 @@ def pre_web(data, root):
 def log(root, name, record):
     directory = os.path.join(root, ".monerex", "log")
     os.makedirs(directory, exist_ok=True)
-    record["at"] = int(time.time())
+    record["at"] = time.time()
     with open(os.path.join(directory, name), "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
 

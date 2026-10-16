@@ -183,7 +183,8 @@ no server, sends nothing to its author, and collects no telemetry.
   whether `oxn` runs (`oxn` on the PATH, else `python3 -P -m oxn --version` from a neutral
   folder; `-P`, which needs Python 3.11, keeps a repository's own `oxn.py` from running in its
   place), and `plan` and `verify` then run `oxn check` and `oxn arch`; `build` runs
-  `oxn check` on the changed files, through the implementer and again itself.
+  `oxn check` on the changed files, through the implementer and again itself; `review` quotes
+  `oxn review --base <base>` for committed work, as a report, never a gate.
 - **The web.** Only the `researcher` agent, reached through `/monerex:consult research`, can
   search and fetch web pages. It has no access to your files; its search queries and the
   addresses it fetches go to the search service and those sites, and can carry words from
