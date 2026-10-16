@@ -547,6 +547,42 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch("monerex:verifier", session=None)
         self.assertEqual(run("event", "verify", "--verdict", "pass").returncode, 0)
 
+    def status(self):
+        done = self.run_script(TASK, "status", "--json")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout)
+
+    def test_status_says_where_the_open_task_stands_and_what_comes_next(self):
+        self.assertEqual(self.status()["task"], None)
+        self.run_script(TASK, "event", "start", "--slug", "t", "--tier", "T1")
+        self.assertEqual((self.status()["task"], self.status()["next"]), ("t", "plan"))
+        self.run_script(TASK, "event", "plan", "--rounds", "1")
+        self.assertEqual(self.status()["next"], "build")
+        self.run_script(TASK, "event", "ablation", "--result", "pass")
+        self.assertEqual(self.status()["next"], "verify")
+        self.dispatch("monerex:verifier")
+        self.run_script(TASK, "event", "verify", "--verdict", "fail")
+        self.assertEqual(self.status()["next"], "build", "a failed verify goes back to build")
+        self.dispatch("monerex:verifier")
+        self.run_script(TASK, "event", "verify", "--verdict", "pass")
+        state = self.status()
+        self.assertEqual((state["next"], state["done"]), ("review", ["plan", "build", "verify"]))
+        self.assertIn("next: review", self.run_script(TASK, "status").stdout)
+
+    def test_status_of_a_feature_starts_with_its_intent(self):
+        self.run_script(TASK, "event", "start", "--slug", "u", "--tier", "T2")
+        self.assertEqual(self.status()["next"], "intent")
+        os.makedirs(os.path.join(self.repo, "docs", "work", "u"))
+        with open(os.path.join(self.repo, "docs", "work", "u", "intent.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Intent\n")
+        self.assertEqual(self.status()["next"], "plan")
+
+    def test_status_reports_whether_the_checks_passed_on_this_commit(self):
+        os.makedirs(os.path.join(self.repo, ".monerex", "state"), exist_ok=True)
+        with open(os.path.join(self.repo, ".monerex", "state", "checks.json"), "w", encoding="utf-8") as handle:
+            json.dump({"head": "0" * 40, "passed": True}, handle)
+        self.assertEqual(self.status()["checks"], {"passed": True, "on_this_commit": False})
+
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)

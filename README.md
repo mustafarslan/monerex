@@ -18,6 +18,18 @@ claude.ai and Cowork do not install it.
 this project, and the guards have been through several review rounds. Treat it as a careful
 first release, not a finished product.
 
+## Quick start
+
+```
+/plugin marketplace add mustafarslan/monerex
+/plugin install monerex@monerex
+/monerex:init
+```
+
+`init` finds your test command, writes `.monerex/config.json` and adds monerex's folders to
+`.gitignore`. Then ask for a change in plain words, or type `/monerex:start <what you want>`.
+`/monerex:start` on its own says where the open task stands and what comes next.
+
 ## The lifecycle
 
 Each stage starts fresh and hands over through a short file, not through the conversation.
@@ -97,7 +109,7 @@ default-branch rule needs git 2.26 or later.
 
 **Installing changes nothing until a repository opts in.** The hooks start on every tool
 call, find no `.monerex/config.json`, and stop: they refuse nothing, ask nothing and write
-nothing. To opt a repository in, create that file:
+nothing. To opt a repository in, type `/monerex:init`, or create that file yourself:
 
 ```json
 { "checks": ["<the command that runs your tests>"], "external_review": "off" }

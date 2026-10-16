@@ -4,8 +4,13 @@
 Reads the settings files that apply to this repository and prints what is
 missing. It never blocks: the exit code is always 0. `--json` prints the
 result for a skill to read.
+
+In a repository that has opted in, the list is printed in full the first time
+and whenever it changes, and in one line otherwise (`--full` prints it again):
+a warning that never changes is one people learn to skip.
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -86,11 +91,41 @@ def main(argv):
         if not result["strict"]:
             print("  note: hosts off the list are approved case by case, not refused. See SECURITY.md.")
         return 0
+    if not seen_before(repo_root(), result["missing"]) or "--full" in argv:
+        print_gaps(result)
+    else:
+        print("monerex: security profile: %d gaps, unchanged since they were listed (`posture.py --full`, SECURITY.md)."
+              % len(result["missing"]))
+    return 0
+
+
+def seen_before(root, missing):
+    """Whether this list of gaps was shown here already; records it when it was not."""
+    folder = os.path.join(root, ".monerex")
+    if not os.path.isdir(folder):
+        return False  # not opted in: nothing is written, and the list is shown every time
+    fingerprint = hashlib.sha256("\n".join(sorted(missing)).encode("utf-8")).hexdigest()
+    path = os.path.join(folder, "state", "posture-seen")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            if handle.read().strip() == fingerprint:
+                return True
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(fingerprint + "\n")
+    except OSError:
+        pass
+    return False
+
+
+def print_gaps(result):
     print("monerex: security profile gaps (work continues either way):")
     for name in result["missing"]:
         print("  - not set: " + name)
     print("See SECURITY.md for the profile and the alternatives.")
-    return 0
 
 
 if __name__ == "__main__":

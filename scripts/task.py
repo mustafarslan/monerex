@@ -8,6 +8,7 @@
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
   task.py event ablation --result exempt   a T0 has no gate; ablate.py logs every other result itself
   task.py event done
+  task.py status [--json]                  the open task: the stages behind it and the next one
   task.py summary [--days N] [--json]
   task.py proposal accept --id R2026-10-15-1 --retro retro-2026-10-15 --metric T1.escalated_share \
       --baseline 0.5 --direction down --change "routing/routing.json: implement starts at large"
@@ -344,6 +345,70 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
                and record.get("agent_id") in finished for record in dispatches)
 
 
+STAGES = {"T0": ["checks"], "T1": ["plan", "build", "verify", "review"],
+          "T2": ["intent", "plan", "build", "verify", "review"], "T3": ["intent", "plan", "build", "verify", "review"]}
+
+
+def checks_record(root):
+    try:
+        with open(os.path.join(root, ".monerex", "state", "checks.json"), encoding="utf-8") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    done = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True)
+    return {"passed": record.get("passed") is True, "on_this_commit": record.get("head") == done.stdout.decode().strip()}
+
+
+def status(root):
+    """Where the open task stands: the stages behind it and the one to run next."""
+    records = read(root)
+    slug = open_task(records)
+    if not slug:
+        finished = [record.get("task") for record in records if record.get("event") == "done"]
+        return {"task": None, "last_done": finished[-1] if finished else None, "checks": checks_record(root)}
+    start = [record for record in records if record.get("event") == "start" and record.get("task") == slug][-1]
+    tier = start.get("tier") if start.get("tier") in STAGES else "T1"
+    done = set()
+    if os.path.exists(os.path.join(root, "docs", "work", slug, "intent.md")):
+        done.add("intent")
+    if os.path.exists(os.path.join(root, "docs", "work", slug, "plan.md")):
+        done.add("plan")
+    for record in records:
+        if record.get("task") != slug or record.get("at", 0) < start["at"]:
+            continue
+        event = record.get("event")
+        if event in ("plan", "review"):
+            done.add(event)
+        elif event == "ablation":
+            done.add("build")
+        elif event == "checks" and record.get("passed"):
+            done.add("checks")
+        elif event == "verify":
+            # A failed verify sends the task back to build; a passed one closes build too.
+            if record.get("verdict") == "pass":
+                done.update({"build", "verify"})
+            else:
+                done.difference_update({"build", "verify"})
+    stages = STAGES[tier]
+    behind = [stage for stage in stages if stage in done]
+    pending = [stage for stage in stages if stage not in done]
+    return {"task": slug, "tier": tier, "risk": bool(start.get("risk")), "done": behind,
+            "next": pending[0] if pending else "done", "checks": checks_record(root)}
+
+
+def show_status(state):
+    checks = state["checks"]
+    line = ("checks: never run here" if checks is None else "checks: %s, %s" % (
+        "passed" if checks["passed"] else "failed", "on this commit" if checks["on_this_commit"] else "on an older commit"))
+    if not state["task"]:
+        last = state.get("last_done")
+        return "monerex: no open task%s.\n%s" % ("; the last one finished was %s" % last if last else "", line)
+    done = ", ".join(state["done"]) or "nothing yet"
+    upcoming = "log `event done`" if state["next"] == "done" else state["next"]
+    return "monerex: task %s (%s%s): done %s; next: %s.\n%s" % (
+        state["task"], state["tier"], ", risk" if state["risk"] else "", done, upcoming, line)
+
+
 def show(result):
     summary = result["tiers"]
     lines = ["the last %d days" % result["days"] if result["days"] else "everything logged in this checkout"]
@@ -409,6 +474,8 @@ def main(argv=None):
     event.add_argument("--result", choices=ABLATION_RESULTS, help="for an ablation: the gate's result")
     for kind in ("confirmed", "plausible", "rejected"):
         event.add_argument("--" + kind, type=int)
+    current = actions.add_parser("status")
+    current.add_argument("--json", action="store_true")
     summary = actions.add_parser("summary")
     summary.add_argument("--json", action="store_true")
     summary.add_argument("--days", type=int, help="look back this many days; everything when left out")
@@ -437,6 +504,10 @@ def main(argv=None):
         print("monerex: recorded proposal %s; the summary judges it by %s tasks started from now on" % (args.id, tier))
         return 0
 
+    if args.action == "status":
+        state = status(root)
+        print(json.dumps(state, indent=2) if args.json else show_status(state))
+        return 0
     if args.action == "summary":
         if args.days is not None and args.days <= 0:
             parser.error("--days must be a positive number")
