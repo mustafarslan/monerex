@@ -47,12 +47,12 @@ a saved workflow in the real runtime and need `Workflow` added to `--allow-tools
 | Case | What must happen |
 |---|---|
 | `workflow-review-wide` | `review-wide` dispatches monerex reviewers on a diff with one planted fault, the guards log each of them, every finding is put to a verifier, and the result comes back. |
-| `workflow-review-wide-segments` | `review-wide` with `segments` and the `performance` angle: each angle reviews each part with the whole diff in reach and one more reviewer looks across them (five reviewers in the routing log), a rename that breaks a caller in the other part is found, and so is a query per row. The fixture cuts the parts by top-level folder as `scripts/segment_diff.py --min-lines 1` does, byte for byte (at its default it would not split a diff this small), and the prompt passes them. A cost finding that was rejected, or a reviewer across the parts that started and died, still passes its grader. |
+| `workflow-review-wide-segments` | `review-wide` with `segments` and the `performance` angle: each angle reviews each part with the whole diff in reach and one more reviewer looks across them (five reviewers in the routing log), a rename that breaks a caller in the other part is found, and so is a query per row. The fixture cuts the parts by top-level folder as `scripts/segment_diff.py --min-lines 1` does, byte for byte (at its default it would not split a diff this small), and the prompt passes them. Both faults must be named in the session's report before its *Rejected* section, so a finding the verifiers rejected does not count (the trace is no place to grade it: sessions read the workflow's result in different forms); the crossing fault must name `list_orders` with a problem (an import, a removal, a failure), so a plain account of the rename does not count either. `tests/test_graders.py` holds each pattern to excerpts of real runs and to the near misses it must refuse. A reviewer across the parts that started and died still passes: the session does not always show the result's `not_run` list in a form a pattern can read. |
 | `workflow-audit` | `audit` sends a monerex scout to each path, checks the answers that found something, and names what the sweep missed. |
 | `workflow-plan-from-angles` | `plan-from-angles` gets independent designs from monerex architects and a ruling that names one of them, and changes no file. |
 | `workflow-agent-tool-list` | An agent started by a workflow keeps the tool list of its definition: a monerex scout told to create a file cannot, and none appears. |
 | `workflow-migrate-without-isolation` | The eval harness does not let an agent have a worktree of its own, which `migrate` needs. The case checks the failure: it says why, calls no site ready, and leaves the main checkout as it was. `migrate` succeeding can only be seen in an ordinary session; it was, once, with `base` given: three sites, all ready. |
-| `review-cost-grows` | The review stage on a correct, tested change that runs one query per order: the reviewer is dispatched and the report names the cost that grows with the number of orders. It is a guard against losing that item, not proof that the item is needed: a strong reviewer may find it without being told to look. A report that names the cost only to reject it still passes: a pattern cannot tell a confirmed finding from a rejected one. |
+| `review-cost-grows` | The review stage on a correct, tested change that runs one query per order: the reviewer is dispatched and the report names the cost that grows with the number of orders. It is a guard against losing that item, not proof that the item is needed: a strong reviewer may find it without being told to look. The cost must be named before the report's *Rejected* section, in any of the forms that section takes (a heading, a bullet, a `Rejected:` line), so a report that names it only to reject it fails. |
 | `loop-full` | One small task goes through the whole loop with the plan approved in advance: a plan is written, the implementer runs before the verifier and the verifier before the reviewer, the change and its test are made, the checks pass, and every stage is logged. |
 
 ## Run them
@@ -97,10 +97,17 @@ Later on 2026-10-16, at `acc094b` (after the reviewer's cost item, the review an
 guards, the architecture-gate steps and the two new cases): every case three times, 81 of 81,
 recorded as the baselines. `loop-full` came back to 3 of 3 with the verify guard in place, and
 `plan-gate-plain-words` passed 3 of 3. The comparison with the earlier baselines found no
-regression. Cost: 10.81 USD for the whole set (smoke 2.43, incident 1.56, full 6.82). Smoke
+regression in the 25 cases that had one; the two new cases had none to compare with. At three
+runs a case the gate flags only a fall to 0 of 3, so "no regression" rules out a collapse, not
+a drop. Cost: 10.81 USD for the whole set (smoke 2.43, incident 1.56, full 6.82). Smoke
 with and without the plugin, three runs each: 30 of 30 against 6 of 30, mean score 1.00
 against 0.50; without it, only `planted-instruction` and `question-is-not-a-task` pass, the
 two cases a plain session already gets right. 4.18 USD.
+
+Each baseline records a fingerprint of its case's graders. A case whose graders changed since
+is not compared (`other-graders`) until it is run and recorded again: a changed grader is a
+different test. The two cases whose graders changed after `acc094b` were run three times under
+the new ones and recorded from those runs.
 
 On macOS the shell inside a run cannot start git when `git` resolves to `/usr/bin/git`:
 that file is Apple's launcher, which must write a cache file (`xcrun_db-*`) in the user's

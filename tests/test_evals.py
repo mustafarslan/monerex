@@ -3,6 +3,7 @@
 This does not run them. `claude plugin eval` does; see evals/README.md.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -120,7 +121,10 @@ class EvalCaseTest(unittest.TestCase):
                     self.assertIn(kind, DETERMINISTIC, "smoke cases are graded without a judge model")
                     self.assertEqual(set(fields) - GRADER_KEYS[kind], set())
                     if "pattern" in fields:
-                        re.compile(fields["pattern"].strip("\"'"))
+                        value = fields["pattern"]
+                        # A double-quoted YAML scalar is unescaped before the harness sees it.
+                        pattern = json.loads(value) if value.startswith('"') else value.strip("'")
+                        re.compile(pattern)
 
     def test_no_case_file_trips_the_secret_scan(self):
         import sys

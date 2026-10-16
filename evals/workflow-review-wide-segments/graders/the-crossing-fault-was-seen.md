@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: "ImportError|can(not|'t) import|still imports|imports? `?list_orders|list_orders`?[^\\n]{0,120}fetch_orders|fetch_orders`?[^\\n]{0,120}list_orders|old name|no longer (exists|defined|defines|there)|not (been )?(followed|updated|carried)|(stale|removed|renamed|missing) (name|function|import|symbol)"
+pattern: "^(?:(?!\\n[ \\t>|]*(?:[-*+][ \\t]+|\\d+[.)][ \\t]+)?(?:\\*\\*|__|#+[ \\t]*)?(?:\\d+[.)][ \\t]*)?Rejected\\b)[\\s\\S])*?(?:list_orders(?:(?!\\n[ \\t>|]*(?:[-*+][ \\t]+|\\d+[.)][ \\t]+)?(?:\\*\\*|__|#+[ \\t]*)?(?:\\d+[.)][ \\t]*)?Rejected\\b)[\\s\\S]){0,200}?\\b(?:import(?:s|ed|ing)?|ImportError|NameError|AttributeError|undefined|no longer (?:exists?|defined|importable|available)|not (?:defined|exist|propagated|updated)|missing|removed|gone|break(?:s|ing)?|broken?|crash(?:es|ing)?|fail(?:s|ed|ing|ure)?|stale|old name)\\b|\\b(?:import(?:s|ed|ing)?|ImportError|NameError|AttributeError|undefined|no longer (?:exists?|defined|importable|available)|not (?:defined|exist|propagated|updated)|missing|removed|gone|break(?:s|ing)?|broken?|crash(?:es|ing)?|fail(?:s|ed|ing|ure)?|stale|old name)\\b(?:(?!\\n[ \\t>|]*(?:[-*+][ \\t]+|\\d+[.)][ \\t]+)?(?:\\*\\*|__|#+[ \\t]*)?(?:\\d+[.)][ \\t]*)?Rejected\\b)[\\s\\S]){0,200}?list_orders)"
 flags: i
 weight: 3
 ---

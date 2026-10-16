@@ -397,6 +397,33 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch("monerex:reviewer")
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
+    def test_a_review_needs_a_reviewer_after_the_last_change_even_without_a_verify(self):
+        # Bugfix's reviewer that doubts the root cause comes before the fix; with no verify
+        # logged, the last implementer dispatch is where the change ends.
+        import time
+
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "f", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        time.sleep(1.1)
+        self.dispatch("monerex:implementer")
+        refused = self.run_script(TASK, "event", "review", *counts)
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("since the latest", refused.stderr)
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_a_second_review_needs_a_reviewer_of_its_own(self):
+        import time
+
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "g", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        time.sleep(1.1)  # times are whole seconds: a reviewer in the same second as the record counts for both
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+        time.sleep(1.1)
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
