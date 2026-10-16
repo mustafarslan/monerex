@@ -19,6 +19,11 @@
 
 - `path/to/file` — what changes
 
+## Architecture
+
+<Only when the repository has an architecture gate; delete this section otherwise. What its
+`check` and `arch` said about the files above: the limits and rules the change must keep.>
+
 ## Tasks
 
 1. <A task small enough to check on its own. The test comes first.>

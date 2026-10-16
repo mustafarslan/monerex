@@ -30,7 +30,7 @@ route regardless of size.
 |---|---|---|---|---|
 | **T0** trivial | typo, rename, config value | none | main session, inline | checks only |
 | **T1** small | bug, change in ≤3 files | `plan.md` | `implementer` from the plan | one fresh-context `verifier` |
-| **T2** feature | multi-file change | `intent.md`, `plan.md` | one `implementer` in a worktree; `scout`s for read fan-out | up to four reviewers, each with one angle; a second reviewer from another model family on a risk flag |
+| **T2** feature | multi-file change | `intent.md`, `plan.md` | one `implementer` in a worktree; `scout`s for read fan-out | up to four reviewers, each with one angle, and a fifth on cost when the diff touches a query, a remote call or a loop over outside data; a second reviewer from another model family on a risk flag |
 | **T3** large | migration, audit, deep research | T2 + staged plan | saved workflows, one per stage, isolated worktrees | verify per stage; your sign-off between stages |
 
 Artifacts live in `docs/work/<slug>/` in the target repository and are committed. They are
@@ -103,7 +103,7 @@ happens when an agent dies. You start them; no stage does, because each starts m
 
 | Workflow | For | What comes back |
 |---|---|---|
-| `/monerex:review-wide` | a large or risky diff | findings from four angles, merged, each put to a verifier told to refute it: confirmed, plausible, rejected, and unchecked; with `segments` from `scripts/segment_diff.py`, every angle on every part of a very large diff, plus one reviewer across the parts |
+| `/monerex:review-wide` | a large or risky diff | findings from four angles (a fifth, `performance`, when named), merged, each put to a verifier told to refute it: confirmed, plausible, rejected, and unchecked; with `segments` from `scripts/segment_diff.py`, every angle on every part of a very large diff, plus one reviewer across the parts |
 | `/monerex:audit` | one question asked of many paths | answers that held when checked, answers that did not, paths not read, and what the sweep missed |
 | `/monerex:plan-from-angles` | a feature with more than one reasonable design | three independent designs, a judge's recommendation, and the choices that are yours |
 | `/monerex:migrate` | one mechanical change at many sites | each site changed in its own worktree, then checked by a verifier that did not make the change; nothing committed or merged; `base` starts the writers on a named commit, otherwise the result names the commit they worked on |
@@ -223,7 +223,8 @@ not run:
 
 Monerex uses only what that page names. It does not go looking for other installed skills.
 
-When an architecture gate is present, its constraints feed `plan` and its deep check joins
+When an architecture gate is present, its constraints feed `plan` and go into the plan's
+*Architecture* section, `build` runs its check on the changed files, and its deep check joins
 `verify`. When its own retry budget runs out, monerex treats that as a spec gap and stops,
 rather than raising effort.
 

@@ -41,7 +41,7 @@ live case so it cannot come back unnoticed. Run them at milestones with `--tag i
 itself before the guard is reached. On macOS it passes for a weaker reason as well: see the
 note on git below.
 
-Six cases carry the tag `full` and cost more, so they are run on their own. Five of them run
+Seven cases carry the tag `full` and cost more, so they are run on their own. Five of them run
 a saved workflow in the real runtime and need `Workflow` added to `--allow-tools`:
 
 | Case | What must happen |
@@ -51,6 +51,7 @@ a saved workflow in the real runtime and need `Workflow` added to `--allow-tools
 | `workflow-plan-from-angles` | `plan-from-angles` gets independent designs from monerex architects and a ruling that names one of them, and changes no file. |
 | `workflow-agent-tool-list` | An agent started by a workflow keeps the tool list of its definition: a monerex scout told to create a file cannot, and none appears. |
 | `workflow-migrate-without-isolation` | The eval harness does not let an agent have a worktree of its own, which `migrate` needs. The case checks the failure: it says why, calls no site ready, and leaves the main checkout as it was. `migrate` succeeding can only be seen in an ordinary session; it was, once, with `base` given: three sites, all ready. |
+| `review-cost-grows` | The review stage on a correct, tested change that runs one query per order: the reviewer is dispatched and the report names the cost that grows with the number of orders. It is a guard against losing that item, not proof that the item is needed: a strong reviewer may find it without being told to look. |
 | `loop-full` | One small task goes through the whole loop with the plan approved in advance: a plan is written, the implementer runs before the verifier and the verifier before the reviewer, the change and its test are made, the checks pass, and every stage is logged. |
 
 ## Run them

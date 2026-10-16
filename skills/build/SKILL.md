@@ -20,6 +20,8 @@ Dispatch `monerex:implementer` with the routed `model` and `effort`, and a brief
 - the path of the plan — it reads the plan itself;
 - the files it may touch;
 - the check command;
+- when the start probe reported an architecture gate, its check command, `<command> check`,
+  which the implementer runs on the files it changed;
 - anything the plan does not say that it needs.
 
 Its report opens with its assessment of the plan. `Assessment: clear` → carry on. `blocked` →
@@ -35,6 +37,10 @@ When it returns, run the checks. Do not rely on its report:
 ```sh
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/check.py"
 ```
+
+With an architecture gate, also run `<command> check <the changed paths>`: exit 0 passes,
+exit 2 is a failed check like any other, and exit 1 means the tool itself failed, reported as
+not run.
 
 - **Passed** → run the ablation gate, then go to `monerex:verify`, passing on the tier the
   implementer ran at. This run proves the working tree; the push gate later needs the checks

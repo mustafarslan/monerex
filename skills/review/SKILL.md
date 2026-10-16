@@ -39,10 +39,14 @@ candidates like any other.
 
 **For a T2 task, or when a risk flag is set**, dispatch up to four reviewers in one message,
 each with the same diff and one angle named in its brief: correctness and edge cases; fit to
-the intent, the plan and the existing structure; security; the tests. The angle is a line in
-the brief, not a different agent. A finding two of them report is one finding. For a very
+the intent, the plan and the existing structure; security, as the reviewer's item 3 lists it;
+the tests. When the diff adds or
+changes a database query, a remote call or a loop over data from outside, add a fifth:
+performance, cost that grows with the input. The angle is a line in the brief, not a
+different agent. A finding two of them report is one finding. For a very
 large diff the user can start `/monerex:review-wide`, which does the same in fixed code and
-puts every finding to a verifier; you do not start it yourself. When the diff is very large,
+puts every finding to a verifier; you do not start it yourself. When the diff adds or changes a query, a remote call or a loop
+over outside data, tell the user to add `performance` to its `angles`. When the diff is very large,
 offer its segmented form: `python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/segment_diff.py"
 .monerex/tmp/review.diff` prints the `segments` to pass it; an empty list, when splitting would
 not help, makes it review the whole diff.

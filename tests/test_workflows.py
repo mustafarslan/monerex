@@ -172,6 +172,27 @@ class WorkflowTest(unittest.TestCase):
                 self.assertIn("angles must be some of", out["result"]["error"])
                 self.assertEqual(out["calls"], [])
 
+    def test_review_wide_looks_at_cost_only_when_asked(self):
+        default = run("review-wide", {"diff": "d.diff"}, [])
+        self.assertNotIn("review:performance", [call["label"] for call in default["calls"]])
+        out = run("review-wide", {"diff": "d.diff", "angles": ["correctness", "performance"]}, [])
+        reviewers = {call["label"]: call["prompt"] for call in out["calls"] if call["phase"] == "Review"}
+        self.assertEqual(sorted(reviewers), ["review:correctness", "review:performance"])
+        self.assertIn("N+1", reviewers["review:performance"])
+
+    def test_review_wide_refuses_more_than_twelve_reviewers_instead_of_starting_them(self):
+        def parts(count):
+            return [{"name": "s%d" % n, "diff": "s%d.diff" % n, "paths": ["s%d/x" % n]} for n in range(count)]
+
+        every = ["correctness", "fit", "security", "tests", "performance"]
+        out = run("review-wide", {"diff": "d.diff", "angles": every, "segments": parts(3)})
+        self.assertIn("at most 12 reviewers", out["result"]["error"])
+        self.assertEqual(out["calls"], [])
+        fits = run("review-wide", {"diff": "d.diff", "angles": every, "segments": parts(2)}, [])
+        self.assertEqual(len([call for call in fits["calls"] if call["phase"] == "Review"]), 10)
+        default = run("review-wide", {"diff": "d.diff", "segments": parts(3)}, [])
+        self.assertEqual(len([call for call in default["calls"] if call["phase"] == "Review"]), 12)
+
     def test_review_wide_keeps_the_graver_severity_and_every_trigger_of_a_merged_finding(self):
         agents = [
             {"match": "review:correctness", "returns": {"findings": [dict(finding("a.py", "Input is not checked", "nit", 3), trigger="a blank name")]}},
