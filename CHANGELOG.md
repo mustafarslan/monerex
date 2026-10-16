@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **Retro judges its own earlier proposals.** Routing decisions are logged, accepted proposals
+  are kept in `.monerex/proposals.jsonl`, and each retro says whether an earlier one moved its
+  number, is a revert candidate, or has too few tasks to tell (#5).
+- **Build proves its tests fail without the change.** `scripts/ablate.py` takes the committed
+  change out of the working tree, reruns the tests and puts it back; a test that still passes
+  is a `diligence` gap (#6). Bugfix uses the same gate with `--bugfix` (#9).
+- **Evals compare with stored baselines.** `scripts/evalgate.py` runs, compares and records;
+  a regression stops the change, and a `holdout/` folder is kept apart from tuning (#7). First
+  baselines: 73 of 75 runs (#10).
+- **`review-wide` can review a very large diff in segments**, with one more reviewer for what
+  crosses them (#8).
+- **A verify verdict needs a verifier that ran** (#11).
+- **The reviewer looks at cost that grows with the input** and names the concrete security
+  faults; review adds a performance angle where a diff touches a query, a remote call or a loop
+  over outside data, and review dispatches its reviewer however small the diff. With an
+  architecture gate, the plan carries its constraints and build runs its check (#12).
+- **Review counts need a reviewer that ran** since the latest verify, as verify verdicts need
+  a verifier.
+- **`python3 -P -m oxn`.** Without the `oxn` program on the PATH, the probe reports a command
+  that cannot run a repository's own `oxn.py`, which plan, build and verify run from the
+  repository.
+
 ## 0.2.0: first public release
 
 - **Renamed from cortex to monerex.** "cortex" is the name of several other Claude Code

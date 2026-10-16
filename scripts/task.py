@@ -288,15 +288,18 @@ def eval_gate(records):
     return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
-def verifier_ran(root, slug=None):
-    """Whether a monerex:verifier was dispatched since the task started; True when there is no open task to check."""
+def agent_ran(root, agent_type, slug=None, since=("start",)):
+    """Whether that agent was dispatched since the task's latest `since` event (its start, by
+    default); True when there is no open task to check."""
     records = read(root)
     slug = slug or open_task(records)
     starts = [record["at"] for record in records if record.get("event") == "start" and record.get("task") == slug]
     if not slug or not starts:
         return True  # nothing is logged without a task anyway
-    return any(record.get("hook_event_name") == "SubagentStart" and record.get("agent_type") == "monerex:verifier"
-               and record.get("at", 0) >= starts[-1] for record in read(root, "routing.jsonl"))
+    anchor = max(record["at"] for record in records if record.get("task") == slug and record.get("event") in since
+                 and record["at"] >= starts[-1])
+    return any(record.get("hook_event_name") == "SubagentStart" and record.get("agent_type") == agent_type
+               and record.get("at", 0) >= anchor for record in read(root, "routing.jsonl"))
 
 
 def show(result):
@@ -400,9 +403,15 @@ def main(argv=None):
         return 0
     if args.name == "start" and not (args.slug and args.tier):
         parser.error("start needs --slug and --tier")
-    if args.name == "verify" and not verifier_ran(root, args.slug):
-        print("monerex: no monerex:verifier ran in this task, so there is no verdict to log. Dispatch the verifier "
-              "(monerex:verify); a stage that did not run is reported as not run, never logged as passed.", file=sys.stderr)
+    # A verdict or a review count with nobody behind it is the session grading its own work.
+    # Review counts need a reviewer after the latest verify: bugfix dispatches one long before,
+    # to doubt the root cause, and a re-review after fixes needs one of its own.
+    needs = {"verify": ("monerex:verifier", "a verdict", "the verifier (monerex:verify)", ("start",)),
+             "review": ("monerex:reviewer", "a review", "the reviewer (monerex:review)", ("start", "verify"))}
+    if args.name in needs and not agent_ran(root, needs[args.name][0], args.slug, needs[args.name][3]):
+        agent, what, how, _ = needs[args.name]
+        print("monerex: no %s ran in this task, so there is no %s to log. Dispatch %s; a stage that did not run "
+              "is reported as not run, never logged as passed." % (agent, what.split(" ", 1)[1], how), file=sys.stderr)
         return 2
     fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected")}
     record = append(root, args.name, slug=args.slug, **fields)

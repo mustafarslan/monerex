@@ -83,6 +83,33 @@ class CapabilityTest(unittest.TestCase):
         self.run_script(PROBE)
         self.assertFalse(os.path.exists(marker), "the repository's oxn.py ran")
 
+    def module(self):
+        # A stand-in oxn module, importable from PYTHONPATH like an installed one.
+        package = os.path.join(self.tmp, "site", "oxn")
+        os.makedirs(package)
+        with open(os.path.join(package, "__init__.py"), "w", encoding="utf-8") as handle:
+            handle.write("")
+        with open(os.path.join(package, "__main__.py"), "w", encoding="utf-8") as handle:
+            handle.write("print('the installed oxn')\n")
+        self.env["PYTHONPATH"] = os.path.dirname(package)
+
+    @unittest.skipIf(sys.version_info < (3, 11), "-P needs Python 3.11")
+    def test_the_module_command_the_stages_run_never_runs_the_repository_s_oxn_py(self):
+        # Found by review: the stages ran the probe's `python3 -m oxn` from the repository's folder.
+        self.module()
+        with open(os.path.join(self.repo, "oxn.yaml"), "w", encoding="utf-8") as handle:
+            handle.write("version: 1\n")
+        marker = os.path.join(self.tmp, "ran")
+        with open(os.path.join(self.repo, "oxn.py"), "w", encoding="utf-8") as handle:
+            handle.write("open(%r, 'w').write('x')\n" % marker)
+        _, result = self.run_script(PROBE)
+        gate = result["architecture_gate"]
+        self.assertEqual((gate["present"], gate["command"]), (True, "python3 -P -m oxn"))
+        argv = [sys.executable] + gate["command"].split()[1:] + ["--version"]
+        done = subprocess.run(argv, cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertEqual(done.stdout.strip(), "the installed oxn")
+        self.assertFalse(os.path.exists(marker), "the repository's oxn.py ran")
+
     def test_a_second_reviewer_is_usable_only_when_named_installed_and_allowed(self):
         self.program("agy-ask", "echo fine")
         self.configure(second_reviewer="agy")  # the policy defaults to off

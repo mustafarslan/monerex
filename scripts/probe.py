@@ -68,13 +68,16 @@ def architecture_gate(root):
     if shutil.which("oxn"):
         return {"present": True, "command": "oxn", "reason": "oxn.yaml and the oxn program"}
     try:
-        # From a neutral folder: `-m` looks in the current one first, and a repository's own
-        # oxn.py must not run before anyone has approved anything.
-        done = subprocess.run([sys.executable, "-m", "oxn", "--version"], cwd=tempfile.gettempdir(), capture_output=True, timeout=15)
+        # `-m` looks in the current folder first, and the stages run the command from the
+        # repository, whose own oxn.py must not run in its place. `-P` (Python 3.11) leaves the
+        # current folder out; the probe also runs from a neutral one.
+        done = subprocess.run([sys.executable, "-P", "-m", "oxn", "--version"], cwd=tempfile.gettempdir(), capture_output=True, timeout=15)
         if done.returncode == 0:
-            return {"present": True, "command": "python3 -m oxn", "reason": "oxn.yaml and the oxn module"}
+            return {"present": True, "command": "python3 -P -m oxn", "reason": "oxn.yaml and the oxn module"}
     except (OSError, subprocess.SubprocessError):
         pass
+    if sys.version_info < (3, 11):
+        return {"present": False, "command": None, "reason": "oxn.yaml is here but the tool cannot be run: without the oxn program on the PATH, the module needs Python 3.11 to run safely"}
     return {"present": False, "command": None, "reason": "oxn.yaml is here but the tool cannot be run"}
 
 

@@ -10,7 +10,7 @@ tools that seem relevant.
 
 | Capability | Found when | Used by | Without it |
 |---|---|---|---|
-| **Architecture gate** (`oxn`) | the repository has an `oxn.yaml` and the tool can be run, as `oxn` or `python3 -m oxn` | `plan` reads its constraints and writes them into the plan; `build` has the implementer run its check on the changed files and runs it again itself, and treats a spent retry budget as a gap in the plan; `verify` runs its deep check | the plan's own checks |
+| **Architecture gate** (`oxn`) | the repository has an `oxn.yaml` and the tool can be run, as `oxn` or, on Python 3.11 and later, `python3 -P -m oxn` | `plan` reads its constraints and writes them into the plan; `build` has the implementer run its check on the changed files and runs it again itself, and treats a spent retry budget as a gap in the plan; `verify` runs its deep check | the plan's own checks |
 | **Second reviewer** from another model family | `.monerex/config.json` names one monerex knows (`"second_reviewer": "agy"`), its program is installed, and `external_review` is not `off` | `review` and `bugfix`, when the route asks for one | reported as not run; the review stands on monerex's own reviewer |
 | **Code host** | the `gh` program is installed and the `origin` remote names a repository | `review` of a pull request, `feedback`, `ship`, `bugfix`, and the count of open pull requests in `start` | those stages stop and say so; a pasted file can stand in for an issue |
 | **The repository's own agents** | definitions under `.claude/agents/` | a stage may dispatch one when its description fits the work better than monerex's | monerex's agents |
