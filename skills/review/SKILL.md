@@ -92,7 +92,8 @@ no longer there.
 - **Merge?** — your recommendation. The decision is the user's.
 
 When the review closes a monerex task, log the counts, which `task.py` refuses unless a
-`monerex:reviewer` ran in this task, and the end of the task:
+`monerex:reviewer` ran since the latest implementer, verify or review in this task, and the end
+of the task:
 
 ```sh
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event review --confirmed <n> --plausible <n> --rejected <n> --merge <yes|after-fixes|no>

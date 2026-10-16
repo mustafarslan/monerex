@@ -1,6 +1,7 @@
 ---
 type: regex
-pattern: "ImportError|can(not|'t) import|still imports|imports? `?list_orders|list_orders`?[^\\n]{0,120}fetch_orders|fetch_orders`?[^\\n]{0,120}list_orders|old name|no longer (exists|defined|defines|there)|not (been )?(followed|updated|carried)|(stale|removed|renamed|missing) (name|function|import|symbol)"
+target: trace
+pattern: "confirmed\\\\+\\\": \\[(?:(?!rejected\\\\+\\\": \\[|== rejected|\\*\\*Rejected|#+ ?Rejected)[\\s\\S])*?(?:list_orders[\\s\\S]{0,200}?(?:import|undefined|no longer|not (defined|exist|propagated|updated)|missing|removed|gone|break|broke|crash|fail|stale|old name|NameError|AttributeError)|(?:import|undefined|no longer|not (defined|exist|propagated|updated)|missing|removed|gone|break|broke|crash|fail|stale|old name|NameError|AttributeError)[\\s\\S]{0,200}?list_orders)"
 flags: i
 weight: 3
 ---

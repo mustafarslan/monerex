@@ -397,6 +397,49 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch("monerex:reviewer")
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
+    def test_an_agent_dispatched_from_a_worktree_counts(self):
+        # The hook logs where the agent was dispatched: a worktree has a log of its own.
+        import time
+
+        with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as handle:
+            handle.write("a\n")
+        for args in (["add", "-A"], ["commit", "-q", "-m", "a"]):
+            subprocess.run(["git", *args], cwd=self.repo, env=self.env, capture_output=True, check=True)
+        tree = os.path.join(self.repo, ".claude", "worktrees", "w")
+        subprocess.run(["git", "worktree", "add", "-q", "-b", "w", tree], cwd=self.repo, env=self.env, capture_output=True, check=True)
+        self.run_script(TASK, "event", "start", "--slug", "e", "--tier", "T1")
+        os.makedirs(os.path.join(tree, ".monerex", "log"), exist_ok=True)
+        with open(os.path.join(tree, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"at": int(time.time()), "hook_event_name": "SubagentStart", "agent_type": "monerex:verifier"}) + "\n")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+
+    def test_a_review_needs_a_reviewer_after_the_last_change_even_without_a_verify(self):
+        # Bugfix's reviewer that doubts the root cause comes before the fix; with no verify
+        # logged, the last implementer dispatch is where the change ends.
+        import time
+
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "f", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        time.sleep(1.1)
+        self.dispatch("monerex:implementer")
+        refused = self.run_script(TASK, "event", "review", *counts)
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("since the latest", refused.stderr)
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_a_second_review_needs_a_reviewer_of_its_own(self):
+        import time
+
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "g", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        time.sleep(1.1)  # times are whole seconds: a reviewer in the same second as the record counts for both
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+        time.sleep(1.1)
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)

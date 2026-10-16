@@ -288,9 +288,16 @@ def eval_gate(records):
     return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
-def agent_ran(root, agent_type, slug=None, since=("start",)):
+def worktree_roots(root):
+    """This checkout and every worktree of its repository: the hook logs a dispatch where it happened."""
+    done = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"], capture_output=True)
+    found = [line[len("worktree "):] for line in done.stdout.decode(errors="replace").splitlines() if line.startswith("worktree ")]
+    return [root] + [path for path in found if os.path.realpath(path) != os.path.realpath(root)]
+
+
+def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
     """Whether that agent was dispatched since the task's latest `since` event (its start, by
-    default); True when there is no open task to check."""
+    default) and the latest dispatch of any agent in `after`; True when there is no open task."""
     records = read(root)
     slug = slug or open_task(records)
     starts = [record["at"] for record in records if record.get("event") == "start" and record.get("task") == slug]
@@ -298,8 +305,10 @@ def agent_ran(root, agent_type, slug=None, since=("start",)):
         return True  # nothing is logged without a task anyway
     anchor = max(record["at"] for record in records if record.get("task") == slug and record.get("event") in since
                  and record["at"] >= starts[-1])
-    return any(record.get("hook_event_name") == "SubagentStart" and record.get("agent_type") == agent_type
-               and record.get("at", 0) >= anchor for record in read(root, "routing.jsonl"))
+    dispatches = [record for tree in worktree_roots(root) for record in read(tree, "routing.jsonl")
+                  if record.get("hook_event_name") == "SubagentStart" and record.get("at", 0) >= starts[-1]]
+    anchor = max([anchor] + [record["at"] for record in dispatches if record.get("agent_type") in after])
+    return any(record.get("agent_type") == agent_type and record["at"] >= anchor for record in dispatches)
 
 
 def show(result):
@@ -404,15 +413,19 @@ def main(argv=None):
     if args.name == "start" and not (args.slug and args.tier):
         parser.error("start needs --slug and --tier")
     # A verdict or a review count with nobody behind it is the session grading its own work.
-    # Review counts need a reviewer after the latest verify: bugfix dispatches one long before,
-    # to doubt the root cause, and a re-review after fixes needs one of its own.
-    needs = {"verify": ("monerex:verifier", "a verdict", "the verifier (monerex:verify)", ("start",)),
-             "review": ("monerex:reviewer", "a review", "the reviewer (monerex:review)", ("start", "verify"))}
-    if args.name in needs and not agent_ran(root, needs[args.name][0], args.slug, needs[args.name][3]):
-        agent, what, how, _ = needs[args.name]
-        print("monerex: no %s ran in this task, so there is no %s to log. Dispatch %s; a stage that did not run "
-              "is reported as not run, never logged as passed." % (agent, what.split(" ", 1)[1], how), file=sys.stderr)
-        return 2
+    # Review counts need a reviewer after the latest change, verify or review: bugfix dispatches
+    # one long before, to doubt the root cause, and a re-review needs one of its own.
+    needs = {"verify": ("monerex:verifier", "verdict", "the verifier (monerex:verify)", "since the task started",
+                        ("start",), ()),
+             "review": ("monerex:reviewer", "review", "the reviewer (monerex:review)",
+                        "since the latest implementer, verify or review in this task",
+                        ("start", "verify", "review"), ("monerex:implementer",))}
+    if args.name in needs:
+        agent, what, how, when, since, after = needs[args.name]
+        if not agent_ran(root, agent, args.slug, since, after):
+            print("monerex: no %s ran %s, so there is no %s to log. Dispatch %s; a stage that did not run "
+                  "is reported as not run, never logged as passed." % (agent, when, what, how), file=sys.stderr)
+            return 2
     fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected")}
     record = append(root, args.name, slug=args.slug, **fields)
     print("monerex: logged %s for %s" % (args.name, record["task"]) if record else "monerex: no open task; nothing logged")
