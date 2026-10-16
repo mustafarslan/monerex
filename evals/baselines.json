@@ -90,6 +90,15 @@
       "plugin_version": "0.2.0",
       "runs": 3
     },
+    "init-writes-config": {
+      "claude_version": "2.1.301",
+      "date": "2026-10-16",
+      "graders": "8ad06afb9dd4529a",
+      "model": "sonnet",
+      "passed": 3,
+      "plugin_version": "0.2.0",
+      "runs": 3
+    },
     "intent-gate": {
       "claude_version": "2.1.301",
       "date": "2026-10-16",
