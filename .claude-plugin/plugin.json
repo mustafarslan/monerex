@@ -1,6 +1,6 @@
 {
   "name": "monerex",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "An AI-driven development lifecycle for Claude Code: agents do the work in stages, hooks hold the rules, and you approve the plan, what is posted under your name, and the merge.",
   "author": {
     "name": "Mustafa Arslan",
@@ -18,5 +18,6 @@
   ],
   "supportUrl": "https://github.com/mustafarslan/monerex/issues",
   "documentationUrl": "https://github.com/mustafarslan/monerex/blob/master/docs/playbook.md",
-  "privacyPolicyUrl": "https://github.com/mustafarslan/monerex#privacy"
+  "privacyPolicyUrl": "https://github.com/mustafarslan/monerex#privacy",
+  "icon": "./.claude-plugin/icon.png"
 }

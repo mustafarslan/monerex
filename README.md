@@ -14,8 +14,7 @@ model and effort, and the rules that must hold, such as "no push to the default 
 monerex is for Claude Code only. It runs Python 3 scripts and ships a `bin/` folder, so
 claude.ai and Cowork do not install it.
 
-**Status: early, 0.2.0,** with the changes since listed under *Unreleased* in the
-[changelog](CHANGELOG.md). The whole loop and the pull-request stages have run for real on
+**Status: early, 0.3.0;** what changed in each release is in the [changelog](CHANGELOG.md). The whole loop and the pull-request stages have run for real on
 this project, and the guards have been through several review rounds. Treat it as a careful
 first release, not a finished product.
 
