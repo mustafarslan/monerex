@@ -65,6 +65,22 @@ class RouteTest(unittest.TestCase):
                 self.assertEqual(result["advisor"], TABLE["models"]["advisor"])
         self.assertIsNone(pick("plan", tier="T2")["advisor"])
 
+    def test_the_advisor_is_fable_and_falls_back_to_the_large_model(self):
+        self.assertEqual(TABLE["models"]["advisor"], "fable")
+        result = pick("plan", tier="T3")
+        self.assertEqual((result["advisor"], result["advisor_fallback"]), ("fable", TABLE["models"]["large"]))
+        quiet = pick("plan", tier="T2")
+        self.assertEqual((quiet["advisor"], quiet["advisor_fallback"]), (None, None))
+
+    def test_a_repository_can_choose_its_advisor_and_its_fallback(self):
+        repo = os.path.realpath(tempfile.mkdtemp(prefix="monerex-route-"))
+        self.addCleanup(shutil.rmtree, repo, ignore_errors=True)
+        os.makedirs(os.path.join(repo, ".monerex"))
+        with open(os.path.join(repo, ".monerex", "config.json"), "w", encoding="utf-8") as handle:
+            json.dump({"models": {"advisor": "opus", "large": "sonnet"}}, handle)
+        result = route.resolve(route.load_table(repo), "plan", risk=True)
+        self.assertEqual((result["advisor"], result["advisor_fallback"]), ("opus", "sonnet"))
+
     def test_a_risky_review_adds_a_cross_family_reviewer(self):
         self.assertTrue(pick("review", risk=True)["cross_family"])
         self.assertFalse(pick("review")["cross_family"])

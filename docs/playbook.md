@@ -150,7 +150,8 @@ One small table, three escalation rules, a log. No learned router.
 2. **`routing/routing.json`** is the single source. `route` reads the tier, the risk flags and
    two signals — *do reliable checks exist?* and *is the plan precise?* — and returns a model
    and an effort that the stage passes on the dispatch. The table names abstract tiers
-   (`small`, `mid`, `large`, `advisor`); you map them to models in `.monerex/config.json`.
+   (`small`, `mid`, `large`) and an `advisor`; you map them to models in `.monerex/config.json`,
+   for example `{"models": {"advisor": "opus"}}`.
 3. **Escalation is triggered by what the harness observes**: checks failed twice, verifier and
    author disagree, or a finding survived verification.
    - *Diligence gap* — skipped a file, did not run the tests → effort up one level.
@@ -174,7 +175,7 @@ One small table, three escalation rules, a log. No learned router.
 | Research | mid | medium | a single fact or one citation check → small, low |
 | ML consult | large — never below the author | medium | escalation rules |
 | Data consult | mid — never below the author | medium | risk flag → large |
-| Advisor | strongest available | — | called by the harness: T3 or risk plans, second failure, pre-ship on risk |
+| Advisor | `fable` by default; the `large` model if that is refused | high | set by the route: T3 or risk plans, a diligence gap at top effort, a knowledge gap at the top tier. The session's own `advisor` tool answers when it has one; otherwise `architect` runs on the advisor model (`skills/route/advisor.md`) |
 
 The main session's model is not switched mid-session; routing happens at dispatch. The highest
 effort level is used only on request. Effort values are re-tested when the model generation

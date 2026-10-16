@@ -80,7 +80,10 @@ The saved workflows start many agents, so they run only when you start them.
   ([`routing/routing.json`](routing/routing.json)) picks them per stage from the tier and the
   risk flags. When a stage fails, the gap is named and the stage escalates: a skipped
   step raises the effort, a wrong diagnosis raises the model, and an unclear requirement comes
-  back to you instead of being retried. Two escalations per stage at most.
+  back to you instead of being retried. Two escalations per stage at most. By default the
+  searching and reading agents run on Haiku, building, verifying and research on Sonnet, and
+  planning, debugging and review on Opus; a large or risky plan, and a stage still failing at
+  the top, also asks an advisor (Fable, or Opus if Fable is not available to you).
 - **Everything is logged locally**, so `retro` can show how each tier and route went (first
   passes, rework, escalations), and the evals (`evals/`) run the plugin for real to check a
   change to the method.
@@ -265,8 +268,8 @@ has the threat model, what each guard covers and does not, and a sandbox profile
 - `engage`: `typed` keeps the loop for the typed command only;
 - `max_open_tasks`: how many background monerex sessions (started with `/monerex:dispatch`)
   may be open before `start` and `dispatch` ask; 2 by default;
-- `models`: which Claude model each tier (`small`, `mid`, `large`) means; see
-  `routing/routing.json`.
+- `models`: which Claude model each tier (`small`, `mid`, `large`) and the `advisor` mean;
+  see `routing/routing.json`.
 
 [Optional capabilities](capabilities.md) lists what else monerex uses when it is installed.
 

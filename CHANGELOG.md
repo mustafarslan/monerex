@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The advisor has a model and a way to be asked.** `models.advisor` is `fable` (it was
+  `"best"`, which named no model), and the route prints `advisor_fallback`, the `large` model,
+  for when that is refused. `skills/route/advisor.md` says who answers (the session's own
+  `advisor` tool, else `architect` on the advisor model), the brief, and how the answer is used.
+  The playbook no longer claims a pre-ship advisor call that no stage makes.
 - **Retro judges its own earlier proposals.** Routing decisions are logged, accepted proposals
   are kept in `.monerex/proposals.jsonl`, and each retro says whether an earlier one moved its
   number, is a revert candidate, or has too few tasks to tell (#5).
