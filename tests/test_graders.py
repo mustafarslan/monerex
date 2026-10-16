@@ -1,8 +1,9 @@
 """What the graders that judge a finding accept and refuse, on real output and on near misses.
 
-The fixtures under tests/fixtures/graders are excerpts of passing runs: the final report of a
-`review-cost-grows` run, and the part of a `workflow-review-wide-segments` trace that holds the
-workflow's result. Each negative is the near miss a grader exists to refuse.
+The fixtures under tests/fixtures/graders are the final reports of passing runs of
+`review-cost-grows` and `workflow-review-wide-segments`; the second of the review-wide ones read
+the workflow's result in a form a pattern on the trace missed. Each negative is the near miss a
+grader exists to refuse.
 """
 
 import json
@@ -29,9 +30,8 @@ def fixture(name):
 
 
 def result(confirmed="", rejected=""):
-    """A review-wide result as the trace holds it: JSON, escaped once more inside the trace."""
-    return ('\\"confirmed\\": [%s], \\"plausible\\": [], \\"rejected\\": [%s], \\"unchecked\\": []'
-            % (confirmed and '{\\"claim\\": \\"%s\\"}' % confirmed, rejected and '{\\"claim\\": \\"%s\\"}' % rejected))
+    """A review-wide report as the session writes it: what was confirmed, then what was rejected."""
+    return "**Confirmed**\n- %s\n\n**Rejected**\n- %s\n" % (confirmed or "none", rejected or "none")
 
 
 class GraderTest(unittest.TestCase):
@@ -52,7 +52,7 @@ class GraderTest(unittest.TestCase):
     def test_review_wide_findings_count_only_outside_the_rejected_list(self):
         cost = grader("workflow-review-wide-segments", "the-cost-was-seen.md")
         crossing = grader("workflow-review-wide-segments", "the-crossing-fault-was-seen.md")
-        for name in ("review-wide-trace-1.txt", "review-wide-trace-2.txt"):
+        for name in ("review-wide-report-1.md", "review-wide-report-2.md"):
             with self.subTest(name):
                 self.assertTrue(cost.search(fixture(name)))
                 self.assertTrue(crossing.search(fixture(name)))
