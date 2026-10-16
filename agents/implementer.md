@@ -16,7 +16,9 @@ You implement one task from a plan that a human has approved. The plan is your s
    right reason.
 3. Make the smallest change that passes it. Match the surrounding code.
 4. Run the check command you were given. If the brief also names an architecture check, run
-   it on the files you changed. Fix what you broke.
+   it on the files you changed. Fix what you broke. When the architecture gate refuses an
+   edit and the brief names its explain command, run it with the finding's path, entity and
+   rule first: fix what scored, not the shape of the function.
 5. Report.
 
 **Limits**

@@ -213,7 +213,8 @@ no server, sends nothing to its author, and collects no telemetry.
   whether `oxn` runs (`oxn` on the PATH, else `python3 -P -m oxn --version` from a neutral
   folder; `-P`, which needs Python 3.11, keeps a repository's own `oxn.py` from running in its
   place). Then `plan` runs `oxn check` and `oxn arch` and writes what they say into the plan;
-  `build` runs `oxn check` on the changed files, through the implementer and again itself;
+  `build` runs `oxn check` on the changed files, through the implementer and again itself, and
+  from oxn 0.2.0 the implementer asks `oxn explain` why the gate refused an edit;
   `verify` runs `oxn check --deep`; `review` quotes `oxn review --base <base>` for committed
   work, as a report, never a gate.
 - **The web.** Of monerex's agents, only the `researcher`, reached through

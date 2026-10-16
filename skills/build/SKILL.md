@@ -21,7 +21,8 @@ Dispatch `monerex:implementer` with the routed `model` and `effort`, and a brief
 - the files it may touch;
 - the check command;
 - when the start probe reported an architecture gate, its check command, `<command> check`,
-  which the implementer runs on the files it changed;
+  which the implementer runs on the files it changed, and, when the probe says it can
+  explain (`explain: true`), `<command> explain <path> <entity> <rule>` for an edit it refuses;
 - anything the plan does not say that it needs.
 
 Its report opens with its assessment of the plan. `Assessment: clear` → carry on. `blocked` →
@@ -51,8 +52,9 @@ not run.
   brief names the failure and what was already tried.
 - The table says **stop** → stop. Report what was tried and what the checks said.
 
-If the repository has an architecture gate, its own hook may refuse an edit and say its
-retry budget is spent. That is a `spec` gap: stop and go back to the plan. Do not raise the
+If the repository has an architecture gate, its own hook may refuse an edit; the explain
+command says what scored and where the limit was set, so the fix goes at the cause. The hook
+may also say its retry budget is spent. That is a `spec` gap: stop and go back to the plan. Do not raise the
 effort or the model to push past it.
 
 ## 4. The ablation gate
