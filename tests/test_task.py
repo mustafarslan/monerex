@@ -345,14 +345,15 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.events()[-1]["result"], "exempt")
         self.assertEqual(self.run_script(TASK, "event", "ablation", "--result", "great").returncode, 2)
 
-    def dispatch(self, agent_type, finished=True):
+    def dispatch(self, agent_type, finished=True, session="session-a"):
         import time
 
         os.makedirs(os.path.join(self.repo, ".monerex", "log"), exist_ok=True)
         with open(os.path.join(self.repo, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
             agent = uuid.uuid4().hex
             for event in ("SubagentStart",) + (("SubagentStop",) if finished else ()):
-                handle.write(json.dumps({"at": time.time(), "hook_event_name": event, "agent_type": agent_type, "agent_id": agent}) + "\n")
+                record = {"at": time.time(), "hook_event_name": event, "agent_type": agent_type, "agent_id": agent}
+                handle.write(json.dumps(dict(record, session_id=session) if session else record) + "\n")
 
     def test_a_verify_verdict_needs_a_verifier_that_ran(self):
         # Seen in a live run: with git unavailable the session logged "verify pass" without dispatching anyone.
@@ -497,6 +498,29 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
         self.dispatch("monerex:reviewer")
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_another_session_s_reviewer_in_this_checkout_does_not_count(self):
+        # Two sessions in one checkout: the one logging the counts must be the one that dispatched.
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "n", "--tier", "T1")
+        self.dispatch("monerex:reviewer", session="session-b")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
+    def test_a_fresh_session_can_finish_a_task_another_one_started(self):
+        env = dict(self.env, CLAUDE_CODE_SESSION_ID="session-c")
+        subprocess.run([sys.executable, "-I", TASK, "event", "start", "--slug", "o", "--tier", "T1"], cwd=self.repo, env=env,
+                       capture_output=True, check=True)
+        self.dispatch("monerex:verifier")  # dispatched by session-a, which now logs the verdict
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+
+    def test_without_a_session_a_record_without_one_still_counts(self):
+        env = {key: value for key, value in self.env.items() if key != "CLAUDE_CODE_SESSION_ID"}
+        run = lambda *args: subprocess.run([sys.executable, "-I", TASK, *args], cwd=self.repo, env=env, capture_output=True)
+        run("event", "start", "--slug", "p", "--tier", "T1")
+        self.dispatch("monerex:verifier", session=None)
+        self.assertEqual(run("event", "verify", "--verdict", "pass").returncode, 0)
 
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]

@@ -197,11 +197,12 @@ changes.
 Two stage records are held in `scripts/task.py` rather than in a hook: a verify verdict is
 refused unless a `monerex:verifier` ran since the task started, and review counts unless a
 `monerex:reviewer` ran since the latest implementer, verify or review. "Ran" means it started
-and finished: an agent cut off before it reported does not count. The guards read this
-checkout's routing log, and each worktree's only for the session that started the task (`start`
-records `CLAUDE_CODE_SESSION_ID`, the id the hook logs with every dispatch), since a worktree
-also holds other tasks' agents. Two sessions working one task in one checkout are not told
-apart. A stage that did not run is reported as not run. No check reaches what a reviewer
+and finished: an agent cut off before it reported does not count. Only the agents of
+the session logging the record count, in this checkout and in each worktree: the hook logs
+`CLAUDE_CODE_SESSION_ID` with every dispatch, and a dispatch names its session, not its task,
+so another session's agents are another task's. A fresh session can still finish a task that
+another one started, with agents of its own. Without that variable (an older Claude Code), this
+checkout's log alone counts, as it stands. A stage that did not run is reported as not run. No check reaches what a reviewer
 found: that is the session's verification of each finding.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an

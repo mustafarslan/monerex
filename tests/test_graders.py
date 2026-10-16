@@ -75,5 +75,18 @@ class GraderTest(unittest.TestCase):
                 self.assertTrue(crossing.search(result(claim)))
 
 
+class RoutingGraderTest(unittest.TestCase):
+    def log(self, events):
+        return "\n".join(json.dumps({"agent_id": "a%d" % n, "agent_type": "monerex:reviewer", "at": n,
+                                      "hook_event_name": event, "session_id": "s"}, sort_keys=True)
+                         for n, event in enumerate(events)) + "\n"
+
+    def test_five_reviewers_must_have_finished_not_only_started(self):
+        # A reviewer killed mid-run logs a start and no stop; seen in a headless run cut by its budget.
+        finished = grader("workflow-review-wide-segments", "every-part-and-across.md")
+        self.assertTrue(finished.search(self.log(["SubagentStart", "SubagentStop"] * 5)))
+        self.assertFalse(finished.search(self.log(["SubagentStart"] * 5 + ["SubagentStop"] * 4)))
+
+
 if __name__ == "__main__":
     unittest.main()
