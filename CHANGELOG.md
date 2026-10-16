@@ -13,11 +13,13 @@
   baselines: 73 of 75 runs (#10).
 - **`review-wide` can review a very large diff in segments**, with one more reviewer for what
   crosses them (#8).
-- **A verify verdict needs a verifier that ran** (#11), and review counts a reviewer that ran.
+- **A verify verdict needs a verifier that ran** (#11).
 - **The reviewer looks at cost that grows with the input** and names the concrete security
   faults; review adds a performance angle where a diff touches a query, a remote call or a loop
   over outside data, and review dispatches its reviewer however small the diff. With an
   architecture gate, the plan carries its constraints and build runs its check (#12).
+- **Review counts need a reviewer that ran** since the latest verify, as verify verdicts need
+  a verifier.
 - **`python3 -P -m oxn`.** Without the `oxn` program on the PATH, the probe reports a command
   that cannot run a repository's own `oxn.py`, which plan, build and verify run from the
   repository.

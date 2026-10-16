@@ -383,6 +383,20 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
         self.assertEqual(self.events()[-1]["event"], "review")
 
+    def test_a_reviewer_from_before_the_last_verify_does_not_count(self):
+        # Bugfix dispatches a reviewer to doubt the root cause long before its review stage.
+        import time
+
+        self.run_script(TASK, "event", "start", "--slug", "d", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        time.sleep(1.1)
+        self.dispatch("monerex:verifier")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+
     def test_a_review_with_no_open_task_is_not_refused(self):
         counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)

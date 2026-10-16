@@ -196,8 +196,9 @@ changes.
 
 Two stage records are held in `scripts/task.py` rather than in a hook: a verify verdict is
 refused unless a `monerex:verifier` was dispatched since the task started, and review counts
-unless a `monerex:reviewer` was. A stage that did not run is reported as not run; the session
-cannot log its own reading as one.
+unless a `monerex:reviewer` was dispatched since the latest verify. A stage that did not run
+is reported as not run. The guard sees that a reviewer started, not what it was asked or
+whether its findings were used.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an
 outside blocker cannot trap a session.

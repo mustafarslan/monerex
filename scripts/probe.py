@@ -77,7 +77,7 @@ def architecture_gate(root):
     except (OSError, subprocess.SubprocessError):
         pass
     if sys.version_info < (3, 11):
-        return {"present": False, "command": None, "reason": "oxn.yaml is here, but without the oxn program on the PATH the module needs Python 3.11 to run safely"}
+        return {"present": False, "command": None, "reason": "oxn.yaml is here but the tool cannot be run: without the oxn program on the PATH, the module needs Python 3.11 to run safely"}
     return {"present": False, "command": None, "reason": "oxn.yaml is here but the tool cannot be run"}
 
 
