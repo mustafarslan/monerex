@@ -118,6 +118,7 @@ def resolve(table, work, tier="T1", risk=False, checks=True, precise=True, gaps=
         "model": table["models"][model],
         "effort": effort,
         "advisor": table["models"]["advisor"] if advisor else None,
+        "advisor_fallback": table["models"]["large"] if advisor else None,
         "cross_family": cross_family,
         "stop": stop,
         "reason": reasons,

@@ -22,13 +22,15 @@ python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/route.py" --work implement --tier 
 | `--author <tier>` | for `verify`, `review`, `ml` and `data`: the tier the author ran at (`small`, `mid`, `large`) |
 | `--gap <kind>` | one per failure so far, oldest first |
 
-It prints `agent`, `model`, `effort`, `advisor`, `cross_family`, `stop` and the reasons.
+It prints `agent`, `model`, `effort`, `advisor`, `advisor_fallback`, `cross_family`, `stop`
+and the reasons.
 
 **Use the answer exactly.** Dispatch `monerex:<agent>` with `model` and `effort` set to the
 printed values. Tell the user the route and the first reason in one line.
 
-- `advisor` is set → consult the advisor before dispatching. When it is not set, do not
-  consult one for this stage: the strongest model is the most expensive call there is.
+- `advisor` is set → consult the advisor before dispatching, as `advisor.md` next to this file
+  describes. When it is not set, do not consult one for this stage: the advisor is the most
+  expensive call there is.
 - `cross_family` is set → add a reviewer from another model family if one is available and
   this repository's `external_review` setting allows it. Otherwise report "not run" and why.
 - `stop` is true → do not dispatch. Report to the user what was tried.
