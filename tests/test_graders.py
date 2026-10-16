@@ -2,8 +2,9 @@
 
 The fixtures under tests/fixtures/graders are the final reports of passing runs of
 `review-cost-grows` and `workflow-review-wide-segments`; the second of the review-wide ones read
-the workflow's result in a form a pattern on the trace missed. Each negative is the near miss a
-grader exists to refuse.
+the workflow's result in a form a pattern on the trace missed. The routing-log lines are written
+here in the hook's own format (sorted keys). Each negative is the near miss a grader exists to
+refuse.
 """
 
 import json

@@ -201,8 +201,10 @@ and finished: an agent cut off before it reported does not count. Only the agent
 the session logging the record count, in this checkout and in each worktree: the hook logs
 `CLAUDE_CODE_SESSION_ID` with every dispatch, and a dispatch names its session, not its task,
 so another session's agents are another task's. A fresh session can still finish a task that
-another one started, with agents of its own. Without that variable (an older Claude Code), this
-checkout's log alone counts, as it stands. A stage that did not run is reported as not run. No check reaches what a reviewer
+another one started, with agents of its own. An implementer of any session in this checkout
+still moves the review anchor, since sessions here share one working tree. Without that
+variable (an older Claude Code), this checkout's log alone counts, as it stands. Sessions are
+not tasks: a checkout has one open task, the one started last, whichever session started it. A stage that did not run is reported as not run. No check reaches what a reviewer
 found: that is the session's verification of each finding.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an

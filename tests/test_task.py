@@ -443,7 +443,7 @@ class CommandLineTest(unittest.TestCase):
                 handle.write(json.dumps({"at": time.time(), "hook_event_name": event, "agent_type": agent_type,
                                          "agent_id": "%s-%s" % (agent_type, session), "session_id": session}) + "\n")
 
-    def test_a_worktree_dispatch_counts_only_for_the_session_that_started_the_task(self):
+    def test_a_worktree_dispatch_counts_only_for_the_calling_session(self):
         # The hook logs a dispatch where it ran; another session's worktree holds another task's agents.
         mine, theirs = self.worktree("mine"), self.worktree("theirs")
         self.run_script(TASK, "event", "start", "--slug", "h", "--tier", "T1")
@@ -480,15 +480,40 @@ class CommandLineTest(unittest.TestCase):
         done = subprocess.run([sys.executable, "-I", TASK, "event", "verify", "--verdict", "pass"], cwd=self.repo,
                               env=self.env, capture_output=True, text=True, timeout=20)
         self.assertEqual(done.returncode, 2)
+        self.assertIn("no monerex:verifier ran", done.stderr)
 
-    def test_a_task_started_without_a_session_counts_only_this_checkout(self):
+    def test_without_a_session_worktree_logs_are_not_read(self):
         tree = self.worktree("w")
-        env = dict(self.env)
-        env.pop("CLAUDE_CODE_SESSION_ID")
-        subprocess.run([sys.executable, "-I", TASK, "event", "start", "--slug", "j", "--tier", "T1"], cwd=self.repo, env=env,
-                       capture_output=True, check=True)
+        env = {key: value for key, value in self.env.items() if key != "CLAUDE_CODE_SESSION_ID"}
+        run = lambda *args: subprocess.run([sys.executable, "-I", TASK, *args], cwd=self.repo, env=env, capture_output=True)
+        run("event", "start", "--slug", "j", "--tier", "T1")
         self.dispatch_in(tree, "monerex:verifier", None)
-        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 2)
+        self.assertEqual(run("event", "verify", "--verdict", "pass").returncode, 2)
+
+    def test_the_caller_s_worktree_agent_counts_for_a_task_another_session_started(self):
+        tree = self.worktree("w")
+        env = dict(self.env, CLAUDE_CODE_SESSION_ID="session-c")
+        subprocess.run([sys.executable, "-I", TASK, "event", "start", "--slug", "q", "--tier", "T1"], cwd=self.repo, env=env,
+                       capture_output=True, check=True)
+        self.dispatch_in(tree, "monerex:verifier", "session-a")
+        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
+
+    def test_a_worktree_agent_of_another_session_does_not_count_for_the_caller(self):
+        tree = self.worktree("w")
+        self.run_script(TASK, "event", "start", "--slug", "r", "--tier", "T1")
+        self.dispatch_in(tree, "monerex:verifier", "session-a")
+        env = dict(self.env, CLAUDE_CODE_SESSION_ID="session-b")
+        done = subprocess.run([sys.executable, "-I", TASK, "event", "verify", "--verdict", "pass"], cwd=self.repo, env=env,
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2)
+
+    def test_any_session_s_implementer_in_this_checkout_moves_the_review_anchor(self):
+        # Sessions in one checkout share its working tree: a change made there needs a review after it.
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.run_script(TASK, "event", "start", "--slug", "s", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        self.dispatch("monerex:implementer", session="session-b")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 2)
 
     def test_an_agent_that_started_and_never_finished_does_not_count(self):
         # Seen in a headless run: a budget cut stopped the reviewers before they reported.

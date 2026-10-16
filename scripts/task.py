@@ -292,11 +292,15 @@ def eval_gate(records):
     return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
+LOG_LIMIT = 64 * 1024 * 1024  # a routing log is a line per agent; anything larger is not one
+
+
 def plain_file(path):
     try:
-        return stat.S_ISREG(os.lstat(path).st_mode)
+        found = os.lstat(path)
     except OSError:
         return False
+    return stat.S_ISREG(found.st_mode) and found.st_size <= LOG_LIMIT
 
 
 def worktree_roots(root):
@@ -320,17 +324,21 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
     # dispatch names its session, not its task, and another session's agents are another task's.
     # Without a session to go by (an older Claude Code), this checkout's log alone, as it stands.
     caller = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    dispatches = read(root, "routing.jsonl")
+    here = read(root, "routing.jsonl")
+    dispatches = [record for record in here if record.get("session_id") == caller] if caller else here
     if caller:
-        dispatches = [record for record in dispatches if record.get("session_id") == caller]
         for tree in worktree_roots(root)[1:]:
             if not plain_file(log_path(tree, "routing.jsonl")):
                 continue  # a branch can commit anything there: a FIFO would hang this, /dev/zero would fill memory
             dispatches += [record for record in read(tree, "routing.jsonl") if record.get("session_id") == caller]
+    started = lambda records: [record for record in records
+                               if record.get("hook_event_name") == "SubagentStart" and record.get("at", 0) >= starts[-1]]
+    # Sessions in one checkout share its working tree, so a change any of them made there needs a
+    # review after it; in a worktree, only the caller's own changes are this task's.
+    changes = started(here) + [record for record in started(dispatches) if record not in here]
+    anchor = max([anchor] + [record["at"] for record in changes if record.get("agent_type") in after])
     finished = {record.get("agent_id") for record in dispatches if record.get("hook_event_name") == "SubagentStop"}
-    dispatches = [record for record in dispatches
-                  if record.get("hook_event_name") == "SubagentStart" and record.get("at", 0) >= starts[-1]]
-    anchor = max([anchor] + [record["at"] for record in dispatches if record.get("agent_type") in after])
+    dispatches = started(dispatches)
     # It counts once it has finished: an agent cut off before it reported did not do the stage.
     return any(record.get("agent_type") == agent_type and record["at"] >= anchor and record.get("agent_id")
                and record.get("agent_id") in finished for record in dispatches)
