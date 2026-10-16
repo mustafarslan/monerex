@@ -92,7 +92,7 @@
       "claude_version": "2.1.301",
       "date": "2026-10-16",
       "model": "sonnet",
-      "passed": 2,
+      "passed": 3,
       "plugin_version": "0.2.0",
       "runs": 3
     },
@@ -108,7 +108,7 @@
       "claude_version": "2.1.301",
       "date": "2026-10-16",
       "model": "sonnet",
-      "passed": 2,
+      "passed": 3,
       "plugin_version": "0.2.0",
       "runs": 3
     },
@@ -137,6 +137,14 @@
       "runs": 3
     },
     "retro-proposes-and-stops": {
+      "claude_version": "2.1.301",
+      "date": "2026-10-16",
+      "model": "sonnet",
+      "passed": 3,
+      "plugin_version": "0.2.0",
+      "runs": 3
+    },
+    "review-cost-grows": {
       "claude_version": "2.1.301",
       "date": "2026-10-16",
       "model": "sonnet",
@@ -193,6 +201,14 @@
       "runs": 3
     },
     "workflow-review-wide": {
+      "claude_version": "2.1.301",
+      "date": "2026-10-16",
+      "model": "sonnet",
+      "passed": 3,
+      "plugin_version": "0.2.0",
+      "runs": 3
+    },
+    "workflow-review-wide-segments": {
       "claude_version": "2.1.301",
       "date": "2026-10-16",
       "model": "sonnet",
