@@ -269,7 +269,9 @@ Reading and posting are kept apart on purpose.
 - **What the plugin adds:** run with and without it once, the whole-loop case scored 1.00
   against 0.25. Both made the change; the difference is the plan, the independent check and
   the review around it, at about five times the cost on a task that small. On a change asked
-  for in plain words, 0.85 against 0.27 before the session-start notice was added.
+  for in plain words, 0.85 against 0.27 before the session-start notice was added. The smoke
+  suite on 2026-10-16: 30 of 30 runs with the plugin, 6 of 30 without (mean 1.00 against
+  0.50).
 - **Retro:** `/monerex:retro` reads the logs for a period and proposes at most five changes,
   each tied to a number: retune a route, turn a repeated finding into a guard or an eval
   case, prune an instruction. You decide each one. It never writes lessons into an
@@ -279,8 +281,8 @@ Reading and posting are kept apart on purpose.
 - **CI:** the unit tests run on every push and pull request, with a read-only token and no
   third-party action. Plugin validation and the smoke evals run only when you start them by
   hand, because they need your model API key.
-- **Baselines:** recorded on 2026-10-16 from three runs of every case (73 of 75 passed; see
-  `evals/README.md`). The whole set costs about 8.40 USD a pass on the mid model.
+- **Baselines:** recorded on 2026-10-16 at `acc094b` from three runs of every case (81 of 81
+  passed; see `evals/README.md`). The whole set costs about 10.80 USD a pass on the mid model.
 - **Not measured:** tokens per tier. The harness does not report usage to hooks; the eval
   tool's cost estimate is the only figure there is.
 

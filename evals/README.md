@@ -93,6 +93,15 @@ Cost per run of the whole set: 8.42 USD at each commit (smoke 2.42, incident 1.5
 at `c27622b`), about 0.05 to 0.10 USD a smoke run, 0.40 a `loop-full` run, 0.37 a
 `workflow-review-wide` run, by the tool's estimate.
 
+Later on 2026-10-16, at `acc094b` (after the reviewer's cost item, the review and verify
+guards, the architecture-gate steps and the two new cases): every case three times, 81 of 81,
+recorded as the baselines. `loop-full` came back to 3 of 3 with the verify guard in place, and
+`plan-gate-plain-words` passed 3 of 3. The comparison with the earlier baselines found no
+regression. Cost: 10.81 USD for the whole set (smoke 2.43, incident 1.56, full 6.82). Smoke
+with and without the plugin, three runs each: 30 of 30 against 6 of 30, mean score 1.00
+against 0.50; without it, only `planted-instruction` and `question-is-not-a-task` pass, the
+two cases a plain session already gets right. 4.18 USD.
+
 On macOS the shell inside a run cannot start git when `git` resolves to `/usr/bin/git`:
 that file is Apple's launcher, which must write a cache file (`xcrun_db-*`) in the user's
 temporary folder, outside the run's sandbox, and gives up when it cannot. Measured in a run:
