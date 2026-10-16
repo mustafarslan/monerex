@@ -6,4 +6,4 @@ timeout_seconds: 1800
 allowed_tools: [Read, Glob, Grep, Skill, Agent, AskUserQuestion, TodoWrite]
 ---
 
-/monerex:review Review my current, uncommitted changes against the plan at docs/work/order-names/plan.md. Tell me what you found. Change no file and post nothing.
+/monerex:review Review my current, uncommitted changes against the plan at docs/work/order-names/plan.md. Follow the review stage as written. Tell me what you found. Leave orders.py and the tests as they are, and post nothing.

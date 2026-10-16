@@ -32,6 +32,9 @@ a risk flag is set. Dispatch `monerex:reviewer` with the routed `model` and `eff
 `.monerex/tmp/review.diff`, and the plan path if there is one. Tell it nothing about what you
 expect it to find.
 
+Dispatch it however small the diff, and when git failed too. Your own reading is not a review:
+you are not a fresh context. A reviewer that did not run goes under *Not run*.
+
 If the diff changes training, evaluation or prompting code, also dispatch
 `monerex:ml-specialist` (route `ml`); if it changes an analysis or a query that a number is
 read from, `monerex:data-scientist` (route `data`). Pass `--author` on both. Their findings are
