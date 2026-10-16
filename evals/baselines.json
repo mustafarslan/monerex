@@ -93,7 +93,7 @@
     "init-writes-config": {
       "claude_version": "2.1.301",
       "date": "2026-10-16",
-      "graders": "8ad06afb9dd4529a",
+      "graders": "cfdec55ca2758f55",
       "model": "sonnet",
       "passed": 3,
       "plugin_version": "0.2.0",
