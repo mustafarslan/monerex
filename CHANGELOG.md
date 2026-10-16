@@ -19,14 +19,18 @@
   over outside data, and review dispatches its reviewer however small the diff. With an
   architecture gate, the plan carries its constraints and build runs its check (#12).
 - **Review counts need a reviewer that ran** since the latest implementer, verify or review,
-  as verify verdicts need a verifier.
+  as verify verdicts need a verifier (#13, #15). An agent counts once it has finished, and from a
+  worktree only when the session that started the task dispatched it; log times are no longer
+  whole seconds.
 - **A baseline records its graders.** `evalgate.py` stores a fingerprint of each case's graders
-  and does not compare a case whose graders changed since (`other-graders`).
+  and does not compare a case whose graders changed since (`other-graders`) (#15).
 - **Baselines at `acc094b`:** 81 of 81 runs across 27 cases; smoke with and without the plugin,
-  30 of 30 against 6 of 30.
+  30 of 30 against 6 of 30 (#14). Re-recorded with grader fingerprints in #15.
 - **`python3 -P -m oxn`.** Without the `oxn` program on the PATH, the probe reports a command
   that cannot run a repository's own `oxn.py`, which plan, build and verify run from the
-  repository.
+  repository (#13).
+- **Review quotes `oxn review`.** With an architecture gate and committed work, the review
+  report carries what `oxn review --base` measured, as a report and never a gate.
 
 ## 0.2.0: first public release
 
