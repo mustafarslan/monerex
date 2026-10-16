@@ -397,22 +397,6 @@ class CommandLineTest(unittest.TestCase):
         self.dispatch("monerex:reviewer")
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
-    def test_an_agent_dispatched_from_a_worktree_counts(self):
-        # The hook logs where the agent was dispatched: a worktree has a log of its own.
-        import time
-
-        with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as handle:
-            handle.write("a\n")
-        for args in (["add", "-A"], ["commit", "-q", "-m", "a"]):
-            subprocess.run(["git", *args], cwd=self.repo, env=self.env, capture_output=True, check=True)
-        tree = os.path.join(self.repo, ".claude", "worktrees", "w")
-        subprocess.run(["git", "worktree", "add", "-q", "-b", "w", tree], cwd=self.repo, env=self.env, capture_output=True, check=True)
-        self.run_script(TASK, "event", "start", "--slug", "e", "--tier", "T1")
-        os.makedirs(os.path.join(tree, ".monerex", "log"), exist_ok=True)
-        with open(os.path.join(tree, ".monerex", "log", "routing.jsonl"), "a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"at": int(time.time()), "hook_event_name": "SubagentStart", "agent_type": "monerex:verifier"}) + "\n")
-        self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "pass").returncode, 0)
-
     def test_a_review_needs_a_reviewer_after_the_last_change_even_without_a_verify(self):
         # Bugfix's reviewer that doubts the root cause comes before the fix; with no verify
         # logged, the last implementer dispatch is where the change ends.

@@ -24,6 +24,7 @@ library only.
 """
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -63,6 +64,19 @@ def parse(data):
             "claude_version": data.get("claudeVersion"), "partial": bool(data.get("partial")), "cost": data.get("costUsd")}
 
 
+def graders_hash(root, name):
+    """A fingerprint of a case's graders: a baseline says nothing about graders that changed since."""
+    for folder in ("evals", "holdout"):
+        graders = os.path.join(root, folder, name, "graders")
+        if os.path.isdir(graders):
+            digest = hashlib.sha256()
+            for entry in sorted(os.listdir(graders)):
+                with open(os.path.join(graders, entry), "rb") as handle:
+                    digest.update(entry.encode("utf-8") + b"\0" + handle.read() + b"\0")
+            return digest.hexdigest()[:16]
+    return None
+
+
 def fisher_lower(base_passed, base_runs, now_passed, now_runs):
     """P(now_passed or fewer passes) if both sets of runs came from the same pass rate (one-sided Fisher exact)."""
     total, successes = base_runs + now_runs, base_passed + now_passed
@@ -74,13 +88,15 @@ def fisher_lower(base_passed, base_runs, now_passed, now_runs):
 MIN_RUNS = 2  # with one run a Fisher test cannot reach the threshold, and one flake would look like zero passes
 
 
-def judge(base, now, model):
+def judge(base, now, model, graders=None):
     if not now["runs"]:
         return "not-run"
     if base is None:
         return "not-run" if now["errors"] else "new"
     if base.get("model") != model:
         return "other-model"
+    if base.get("graders") and graders and base["graders"] != graders:
+        return "other-graders"
     counted = now["runs"] - now["errors"]  # an errored run says nothing about the case, either way
     if counted >= MIN_RUNS and (
             (now["passed"] == 0 and base.get("passed", 0) > 0)
@@ -93,13 +109,13 @@ def judge(base, now, model):
     return "same"
 
 
-def compare(baselines, parsed, expected=None):
+def compare(baselines, parsed, expected=None, root=None):
     """Judge every case that ran; a case of the suite that has a baseline but did not run is `missing`."""
     known = (baselines or {}).get("cases", {})
     cases = {}
     for name, now in parsed["cases"].items():
         base = known.get(name)
-        cases[name] = dict(now, verdict=judge(base, now, parsed["model"]),
+        cases[name] = dict(now, verdict=judge(base, now, parsed["model"], graders_hash(root, name) if root else None),
                            baseline=None if base is None else {"runs": base.get("runs"), "passed": base.get("passed")})
     for name in sorted(set(expected or ()) - set(parsed["cases"])):
         if name in known:
@@ -109,7 +125,7 @@ def compare(baselines, parsed, expected=None):
             "cost": parsed.get("cost"), "cases": cases}
 
 
-NOT_JUDGED = {"not-run", "other-model", "too-few-runs", "missing"}
+NOT_JUDGED = {"not-run", "other-model", "other-graders", "too-few-runs", "missing"}
 
 
 def exit_code(report):
@@ -200,7 +216,7 @@ def run(root, args):
         report = {"baselines": baselines is not None, "partial": True, "model": args.model, "cost": None, "cases": {}}
     else:
         spent = parsed.get("cost") if parsed.get("cost") is not None else budget
-        report = compare(baselines, parsed, expected)
+        report = compare(baselines, parsed, expected, root)
         for name in dropped(report):  # one unlucky run is not a regression: run that case again and judge them together
             left = budget - spent
             again = evaluate(root, args, ["--case", name, "--runs", "3"], left) if left >= 0.01 else None
@@ -209,7 +225,7 @@ def run(root, args):
             rerun = (again or {}).get("cases", {}).get(name) or {"runs": 0, "passed": 0, "errors": 1}  # no result is an error
             parsed = merge(parsed, {"cases": {name: rerun}, "partial": bool(again and again["partial"]),
                                     "cost": (again or {}).get("cost")})
-        report = compare(baselines, parsed, expected)
+        report = compare(baselines, parsed, expected, root)
     code = exit_code(report)
     record = {"at": int(time.time()), "head": head(root), "tag": None if args.holdout else args.tag, "holdout": args.holdout,
               "milestone": args.milestone, "model": args.model, "verdict": {0: "pass", 1: "regression", 2: "not-run"}[code],
@@ -243,7 +259,8 @@ def write_baselines(root, path):
     date = time.strftime("%Y-%m-%d")
     for name, item in parsed["cases"].items():
         baselines["cases"][name] = {"runs": item["runs"], "passed": item["passed"], "model": parsed["model"],
-                                    "plugin_version": parsed["plugin_version"], "claude_version": parsed["claude_version"], "date": date}
+                                    "plugin_version": parsed["plugin_version"], "claude_version": parsed["claude_version"], "date": date,
+                                    "graders": graders_hash(root, name)}
     with open(target, "w", encoding="utf-8") as handle:
         json.dump(baselines, handle, indent=2, sort_keys=True)
         handle.write("\n")
@@ -307,7 +324,7 @@ def main(argv=None):
         if data is None:
             print("monerex: cannot read %s" % args.result, file=sys.stderr)
             return 2
-        report = compare(load(os.path.join(root, BASELINES)), parse(data), suite_cases(root, "evals", args.tag) if args.tag else None)
+        report = compare(load(os.path.join(root, BASELINES)), parse(data), suite_cases(root, "evals", args.tag) if args.tag else None, root)
         print(json.dumps(report, indent=2))
         return exit_code(report)
     if args.action == "baseline":

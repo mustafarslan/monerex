@@ -19,7 +19,9 @@
   over outside data, and review dispatches its reviewer however small the diff. With an
   architecture gate, the plan carries its constraints and build runs its check (#12).
 - **Review counts need a reviewer that ran** since the latest implementer, verify or review,
-  as verify verdicts need a verifier; both read the routing logs of every worktree.
+  as verify verdicts need a verifier.
+- **A baseline records its graders.** `evalgate.py` stores a fingerprint of each case's graders
+  and does not compare a case whose graders changed since (`other-graders`).
 - **Baselines at `acc094b`:** 81 of 81 runs across 27 cases; smoke with and without the plugin,
   30 of 30 against 6 of 30.
 - **`python3 -P -m oxn`.** Without the `oxn` program on the PATH, the probe reports a command

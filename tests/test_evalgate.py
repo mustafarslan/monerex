@@ -289,6 +289,38 @@ class CommandLineTest(unittest.TestCase):
         with open(os.path.join(self.repo, "evals", "baselines.json")) as handle:
             self.assertEqual(sorted(json.load(handle)["cases"]), ["a"])
 
+    def test_a_baseline_records_its_graders_and_a_changed_grader_is_not_compared(self):
+        # A changed grader is a different test: its old baseline says nothing about it.
+        self.add_case("evals", "a", ["smoke"])
+        graders = os.path.join(self.repo, "evals", "a", "graders")
+        os.makedirs(graders)
+        with open(os.path.join(graders, "g.md"), "w") as handle:
+            handle.write("---\ntype: regex\npattern: one\n---\n")
+        path = os.path.join(self.repo, "r.json")
+        with open(path, "w") as handle:
+            json.dump(result({"a": ["pass"] * 3}), handle)
+        self.assertEqual(self.gate("baseline", path).returncode, 0)
+        with open(os.path.join(self.repo, "evals", "baselines.json")) as handle:
+            recorded = json.load(handle)["cases"]["a"]["graders"]
+        self.assertTrue(recorded)
+        done = self.gate("compare", path)
+        self.assertEqual((done.returncode, json.loads(done.stdout)["cases"]["a"]["verdict"]), (0, "same"))
+        with open(os.path.join(graders, "g.md"), "w") as handle:
+            handle.write("---\ntype: regex\npattern: two\n---\n")
+        done = self.gate("compare", path)
+        self.assertEqual((done.returncode, json.loads(done.stdout)["cases"]["a"]["verdict"]), (2, "other-graders"))
+        self.assertEqual(self.gate("baseline", path).returncode, 0)
+        with open(os.path.join(self.repo, "evals", "baselines.json")) as handle:
+            self.assertNotEqual(json.load(handle)["cases"]["a"]["graders"], recorded, "re-recording shows in the file")
+
+    def test_a_baseline_from_before_grader_hashes_is_still_compared(self):
+        self.add_case("evals", "a", ["smoke"])
+        self.write_baselines({"a": (3, 3)})
+        path = os.path.join(self.repo, "r.json")
+        with open(path, "w") as handle:
+            json.dump(result({"a": ["pass"] * 3}), handle)
+        self.assertEqual(json.loads(self.gate("compare", path).stdout)["cases"]["a"]["verdict"], "same")
+
     def test_status_without_any_record(self):
         done = self.gate("status")
         self.assertEqual(done.returncode, 1)

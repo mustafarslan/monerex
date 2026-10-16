@@ -288,13 +288,6 @@ def eval_gate(records):
     return {"runs": runs, "holdout_looks": len(looks), "milestones": len({record.get("milestone") for record in looks})}
 
 
-def worktree_roots(root):
-    """This checkout and every worktree of its repository: the hook logs a dispatch where it happened."""
-    done = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"], capture_output=True)
-    found = [line[len("worktree "):] for line in done.stdout.decode(errors="replace").splitlines() if line.startswith("worktree ")]
-    return [root] + [path for path in found if os.path.realpath(path) != os.path.realpath(root)]
-
-
 def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
     """Whether that agent was dispatched since the task's latest `since` event (its start, by
     default) and the latest dispatch of any agent in `after`; True when there is no open task."""
@@ -305,7 +298,9 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
         return True  # nothing is logged without a task anyway
     anchor = max(record["at"] for record in records if record.get("task") == slug and record.get("event") in since
                  and record["at"] >= starts[-1])
-    dispatches = [record for tree in worktree_roots(root) for record in read(tree, "routing.jsonl")
+    # This checkout's log only. A worktree's log holds other tasks' dispatches too, and nothing in
+    # a dispatch names its task, so reading it would let another task's agent count for this one.
+    dispatches = [record for record in read(root, "routing.jsonl")
                   if record.get("hook_event_name") == "SubagentStart" and record.get("at", 0) >= starts[-1]]
     anchor = max([anchor] + [record["at"] for record in dispatches if record.get("agent_type") in after])
     return any(record.get("agent_type") == agent_type and record["at"] >= anchor for record in dispatches)

@@ -196,9 +196,10 @@ changes.
 
 Two stage records are held in `scripts/task.py` rather than in a hook: a verify verdict is
 refused unless a `monerex:verifier` was dispatched since the task started, and review counts
-unless a `monerex:reviewer` was dispatched since the latest implementer, verify or review. Both read the routing log
-of the checkout and of each of its worktrees, since a dispatch is logged where it happened. A
-stage that did not run is reported as not run. The guard sees that a reviewer started, not what it was asked or
+unless a `monerex:reviewer` was dispatched since the latest implementer, verify or review. Both read this checkout's
+routing log only: an agent dispatched from a worktree is logged there, and is not counted,
+because a worktree's log also holds other tasks' dispatches and none names its task. A stage
+that did not run is reported as not run. The guard sees that a reviewer started, not what it was asked or
 whether its findings were used.
 
 The completion gate sits on push, not on session end, so a deliberately failing test or an
