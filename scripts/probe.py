@@ -5,7 +5,8 @@ Prints one JSON object. Nothing here touches the network, and nothing is require
 a capability that is absent is reported as absent, and the stage that wanted it
 reports "not run". Standard library only.
 
-  architecture_gate   an `oxn.yaml` in the repository and a way to run the tool
+  architecture_gate   an `oxn.yaml` in the repository and a way to run the tool, and whether
+                      that tool can explain a finding (`explain`, oxn 0.2.0)
   second_reviewer     a reviewer from another model family, and whether this
                       repository's `external_review` policy lets it be used
   code_host           the `gh` program, and the repository's owner/name
@@ -62,7 +63,26 @@ def load_config(root):
         return {}
 
 
+def explains(argv):
+    """Whether this oxn has `explain` (0.2.0 and later): an older one refuses the command."""
+    try:
+        done = subprocess.run(argv + ["explain", "--help"], cwd=tempfile.gettempdir(), capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0
+
+
 def architecture_gate(root):
+    found = gate_command(root)
+    if found["present"]:
+        argv = ["oxn"] if found["command"] == "oxn" else [sys.executable, "-P", "-m", "oxn"]
+        found["explain"] = explains(argv)
+    else:
+        found["explain"] = False
+    return found
+
+
+def gate_command(root):
     if not os.path.exists(os.path.join(root, "oxn.yaml")):
         return {"present": False, "command": None, "reason": "no oxn.yaml in this repository"}
     if shutil.which("oxn"):

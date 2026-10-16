@@ -73,6 +73,17 @@ class CapabilityTest(unittest.TestCase):
         _, result = self.run_script(PROBE)
         self.assertEqual((result["architecture_gate"]["present"], result["architecture_gate"]["command"]), (True, "oxn"))
 
+    def test_the_gate_says_whether_it_can_explain_a_finding(self):
+        # `oxn explain` arrived in oxn 0.2.0; an older install answers --help with an error.
+        with open(os.path.join(self.repo, "oxn.yaml"), "w", encoding="utf-8") as handle:
+            handle.write("version: 1\n")
+        self.program("oxn", 'if [ "$1" = explain ]; then exit 2; fi; exit 0')
+        _, result = self.run_script(PROBE)
+        self.assertEqual((result["architecture_gate"]["present"], result["architecture_gate"]["explain"]), (True, False))
+        self.program("oxn", "exit 0")
+        _, result = self.run_script(PROBE)
+        self.assertTrue(result["architecture_gate"]["explain"])
+
     def test_probing_for_the_architecture_gate_runs_no_code_from_the_repository(self):
         # Found by review: `python -m oxn` from the repository's folder ran its own oxn.py.
         with open(os.path.join(self.repo, "oxn.yaml"), "w", encoding="utf-8") as handle:

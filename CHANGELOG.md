@@ -36,6 +36,8 @@
   (`task.py status`).
 - **The security profile gaps are listed in full once,** and again only when they change; in
   between, one line.
+- **The implementer asks `oxn explain`** why the architecture gate refused an edit, when the
+  installed oxn has it (0.2.0 and later; the probe reports `explain`).
 - **Review quotes `oxn review`.** With an architecture gate and committed work, the review
   report carries what `oxn review --base` measured, as a report and never a gate (#16).
 
