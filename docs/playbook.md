@@ -194,6 +194,11 @@ changes.
 | Session start | In a repository that uses monerex, the session is told that code changes begin with `start`. Set `"engage": "typed"` in `.monerex/config.json` to keep the loop for the typed command only. |
 | A plan or intent file is written | The task's start is logged if no task is open. |
 
+Two stage records are held in `scripts/task.py` rather than in a hook: a verify verdict is
+refused unless a `monerex:verifier` was dispatched since the task started, and review counts
+unless a `monerex:reviewer` was. A stage that did not run is reported as not run; the session
+cannot log its own reading as one.
+
 The completion gate sits on push, not on session end, so a deliberately failing test or an
 outside blocker cannot trap a session.
 

@@ -180,8 +180,9 @@ no server, sends nothing to its author, and collects no telemetry.
   `off`, nothing is sent and the review says the second reviewer did not run.
   [capabilities.md](capabilities.md) describes what the `agy-ask` program must do.
 - **An architecture checker (optional).** If the repository has an `oxn.yaml`, `start` asks
-  whether `oxn` runs (`oxn` on the PATH, else `python3 -m oxn --version` from a neutral
-  folder), and `plan` and `verify` then run `oxn check` and `oxn arch`; `build` runs
+  whether `oxn` runs (`oxn` on the PATH, else `python3 -P -m oxn --version` from a neutral
+  folder; `-P`, which needs Python 3.11, keeps a repository's own `oxn.py` from running in its
+  place), and `plan` and `verify` then run `oxn check` and `oxn arch`; `build` runs
   `oxn check` on the changed files, through the implementer and again itself.
 - **The web.** Only the `researcher` agent, reached through `/monerex:consult research`, can
   search and fetch web pages. It has no access to your files; its search queries and the

@@ -248,6 +248,7 @@ class CommandLineTest(unittest.TestCase):
     def test_events_are_written_and_summarised(self):
         self.assertEqual(self.run_script(TASK, "event", "start", "--slug", "fix-login", "--tier", "T1", "--risk").returncode, 0)
         self.run_script(TASK, "event", "plan", "--rounds", "2")
+        self.dispatch("monerex:reviewer")  # a review is logged only when a reviewer ran
         self.run_script(TASK, "event", "review", "--confirmed", "2", "--rejected", "2", "--merge", "yes")
         self.run_script(TASK, "event", "done")
         names = [(record["task"], record["event"]) for record in self.events()]
@@ -368,6 +369,23 @@ class CommandLineTest(unittest.TestCase):
         time.sleep(1.1)
         self.run_script(TASK, "event", "start", "--slug", "b", "--tier", "T1")
         self.assertEqual(self.run_script(TASK, "event", "verify", "--verdict", "fail").returncode, 2)
+
+    def test_a_review_needs_a_reviewer_that_ran(self):
+        # Seen in an eval: on a small diff the session reviewed it itself and skipped the reviewer.
+        self.run_script(TASK, "event", "start", "--slug", "c", "--tier", "T1")
+        self.dispatch("monerex:verifier")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        refused = self.run_script(TASK, "event", "review", *counts)
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("monerex:reviewer", refused.stderr)
+        self.assertEqual([record["event"] for record in self.events()], ["start"], "nothing is logged")
+        self.dispatch("monerex:reviewer")
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+        self.assertEqual(self.events()[-1]["event"], "review")
+
+    def test_a_review_with_no_open_task_is_not_refused(self):
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
 
     def test_start_needs_a_slug_and_a_tier(self):
         self.assertEqual(self.run_script(TASK, "event", "start").returncode, 2)
