@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0: the measured loop, the advisor, and the directory listing
 
 - **The advisor has a model and a way to be asked.** `models.advisor` is `fable` (it was
   `"best"`, which named no model), and the route prints `advisor_fallback`, the `large` model,
