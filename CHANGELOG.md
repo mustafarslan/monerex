@@ -38,6 +38,9 @@
   between, one line.
 - **The implementer asks `oxn explain`** why the architecture gate refused an edit, when the
   installed oxn has it (0.2.0 and later; the probe reports `explain`).
+- **Build's ablation gate no longer trips the protected-files report.** It writes a change
+  back with a fresh time, which the shell guard read as a change to a protected file such as
+  `CLAUDE.md`; a file that now holds exactly what HEAD has is no longer reported.
 - **Retro proposal ids are plain names,** and a proposal's text reaches the session as one
   short line: `.monerex/proposals.jsonl` is committed, so a clone can carry it.
 - **Review quotes `oxn review`.** With an architecture gate and committed work, the review

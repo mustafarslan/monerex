@@ -88,7 +88,10 @@ request, in a repository that has opted in with a `.monerex/config.json`. Withou
   protected file in another checkout than the one the command ran in, and a command that
   moved the branch or made a commit, a command still running in the background, protected
   files deeper in the tree, and anything else that writes one of these files at the same
-  moment, which is reported as if the command had.
+  moment, which is reported as if the command had. A file whose time or size moved but that
+  now holds exactly what HEAD has for it is not reported: build's ablation gate writes the
+  change back that way, with a fresh time. So a command that puts an uncommitted edit of a
+  protected file back to the committed version is not reported either.
 - **Shell:** no force-push, no push to the default branch (including `--all` and `--mirror`),
   no skipped or redirected hooks, no merge. A subagent cannot push or open a PR. When the
   repository lists `checks`, a push or PR needs a record from `scripts/check.py` showing they

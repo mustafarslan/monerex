@@ -1495,6 +1495,21 @@ def where(root):
     return [git(root, "rev-parse", "--verify", "-q", "HEAD"), git(root, "symbolic-ref", "-q", "HEAD")]
 
 
+def as_committed(root, relative):
+    """Whether a plain file now holds exactly what HEAD has for it.
+
+    A fingerprint is a time and a size, so a file written back with the bytes it already had
+    reads as changed: build's ablation gate does that, stamping the change it puts back with a
+    fresh time so caches are rebuilt. Such a file was not changed. Asked only of the few paths
+    whose fingerprint moved, with HEAD known and where it was.
+    """
+    full = os.path.join(root, relative)
+    if os.path.islink(full) or not os.path.isfile(full):
+        return False
+    committed = git(root, "rev-parse", "--verify", "-q", "HEAD:" + relative)
+    return bool(committed) and git(root, "hash-object", "--", relative) == committed
+
+
 def snapshot_path(root, call):
     name = re.sub(r"[^A-Za-z0-9_-]", "", str(call or ""))[:80] or "unnamed"
     return os.path.join(root, ".monerex", "state", SNAPSHOTS, name + ".json")
@@ -1549,6 +1564,8 @@ def shell_changes(data, root):
         # As in the edit rule, the allowed list opens lockfiles and nothing else.
         and not (classify(relative) == "a lockfile" and matches(relative, allowed))
     )
+    if all(at) and all(now_at):
+        changed = [relative for relative in changed if not as_committed(root, relative)]
     if not changed:
         return 0
     log(root, "guard.jsonl", {"event": "shell-changed-protected", "paths": changed, "session_id": data.get("session_id"), "by": data.get("agent_type") or "main session"})

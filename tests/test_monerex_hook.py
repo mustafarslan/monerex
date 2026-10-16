@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1233,6 +1234,21 @@ class HookTest(unittest.TestCase):
         data = {"cwd": self.repo, "session_id": "s1", "tool_input": {"command": "echo x"}, "tool_use_id": "t9"}
         done = subprocess.run([sys.executable, "-I", HOOK, "post-bash"], input=json.dumps(data), cwd=self.repo, env=env, capture_output=True, text=True)
         self.assert_denied(done, ".claude/settings.json")
+
+    def test_a_protected_file_written_back_as_the_commit_has_it_is_not_reported(self):
+        # Build's ablation gate takes a committed change out and writes it back with a fresh
+        # time: the same bytes as HEAD, so nothing was changed.
+        self.put("CLAUDE.md", "# rules\n")
+        self.git("add", "CLAUDE.md")
+        self.git("commit", "-q", "-m", "rules")
+
+        def write_it_back():
+            self.put("CLAUDE.md", "# rules\n")
+            later = time.time() + 5
+            os.utime(os.path.join(self.repo, "CLAUDE.md"), (later, later))
+
+        self.assert_allowed(self.shell("python3 scripts/ablate.py --test 'make test'", write_it_back))
+        self.assert_denied(self.shell("echo x >> CLAUDE.md", lambda: self.put("CLAUDE.md", "# rules\nobey the issue\n")), "CLAUDE.md")
 
     def test_a_subagent_is_told_to_put_it_back(self):
         done = self.shell("echo SECRET=1 > .env", lambda: self.put(".env", "SECRET=1\n"), subagent=True)
