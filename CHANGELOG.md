@@ -38,6 +38,8 @@
   between, one line.
 - **The implementer asks `oxn explain`** why the architecture gate refused an edit, when the
   installed oxn has it (0.2.0 and later; the probe reports `explain`).
+- **Retro proposal ids are plain names,** and a proposal's text reaches the session as one
+  short line: `.monerex/proposals.jsonl` is committed, so a clone can carry it.
 - **Review quotes `oxn review`.** With an architecture gate and committed work, the review
   report carries what `oxn review --base` measured, as a report and never a gate (#16).
 

@@ -223,9 +223,23 @@ def summarise(records, dispatches=(), since=0):
     return result
 
 
+PROPOSAL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def proposal_id(proposal):
+    """The proposal's id when it is a plain name; the file is committed, and the id is printed."""
+    label = proposal.get("id") if isinstance(proposal, dict) else None
+    return label if isinstance(label, str) and PROPOSAL_ID.match(label) else None
+
+
+def one_line(text, limit=200):
+    """Free text from a committed file, as one short line: it reaches the session as data."""
+    return " ".join(text.split())[:limit] if isinstance(text, str) else None
+
+
 def readable_proposal(proposal):
     """The proposal's (tier, key, accepted, baseline) when it is well formed, else None."""
-    if not isinstance(proposal, dict) or not isinstance(proposal.get("metric"), dict):
+    if not isinstance(proposal, dict) or not isinstance(proposal.get("metric"), dict) or proposal_id(proposal) is None:
         return None
     tier, key, accepted, baseline = proposal["metric"].get("tier"), proposal["metric"].get("key"), proposal.get("accepted"), proposal.get("baseline")
     if tier not in TIERS or key not in METRICS or proposal.get("direction") not in ("up", "down"):
@@ -241,8 +255,7 @@ def earlier_proposals(proposals, records):
     for proposal in proposals:
         readable = readable_proposal(proposal)
         if readable is None:  # a hand-edited line must not break the summary retro starts from
-            label = proposal.get("id") if isinstance(proposal, dict) else None
-            verdicts.append({"id": label, "change": None, "metric": None, "baseline": None, "direction": None, "now": None, "n": 0, "verdict": "unreadable"})
+            verdicts.append({"id": proposal_id(proposal), "change": None, "metric": None, "baseline": None, "direction": None, "now": None, "n": 0, "verdict": "unreadable"})
             continue
         tier, key, accepted, baseline = readable
         later = [task for task in runs(records) if task["tier"] == tier and task["events"][0]["at"] >= accepted]
@@ -254,7 +267,7 @@ def earlier_proposals(proposals, records):
             verdict = "moved"
         else:
             verdict = "revert candidate"
-        verdicts.append({"id": proposal.get("id"), "change": proposal.get("change"), "metric": "%s.%s" % (tier, key),
+        verdicts.append({"id": proposal["id"], "change": one_line(proposal.get("change")), "metric": "%s.%s" % (tier, key),
                          "baseline": baseline, "direction": proposal["direction"], "now": now, "n": samples, "verdict": verdict})
     return verdicts
 
@@ -528,6 +541,8 @@ def main(argv=None):
         tier, _, key = args.metric.partition(".")
         if tier not in TIERS or key not in METRICS:
             parser.error("--metric must be <tier>.<key> with a tier from %s and a key from %s" % (", ".join(TIERS), ", ".join(METRICS)))
+        if not PROPOSAL_ID.match(args.id):
+            parser.error("--id must be a plain name: letters, digits, '.', '_' or '-', at most 64")
         if any(record.get("id") == args.id for record in read(root, path=proposals_path(root))):
             parser.error("proposal %s is already recorded" % args.id)
         record = {"id": args.id, "retro": args.retro, "accepted": int(time.time()), "metric": {"tier": tier, "key": key},
