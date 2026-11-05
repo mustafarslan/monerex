@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The shell-text merge rules stop at catching the usual spellings: four review rounds showed each new text rule only moves the gap, so SECURITY.md says so and `merge.py`'s own conditions are the gate. After a reported failure, "merged" needs the pull request's head to be the reviewed commit.
+- The shell-text merge rules stop at catching the usual spellings: four review rounds showed each new text rule only moves the gap, so SECURITY.md says so: against a mistake `merge.py`'s conditions hold, and against an agent set on getting round them only CI, `--match-head-commit` and branch protection do. After a reported failure, "merged" needs the pull request's head to be the reviewed commit.
 - **monerex ships by itself.** `ship` is no longer manual only: after a review that says
   `--merge yes`, or a T0's checks, `start` goes on into it when `origin` names a GitHub
   repository. It asks you for one thing, the pull request's text (G2), then pushes, opens the

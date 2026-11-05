@@ -118,6 +118,7 @@ def merge(root, number):
     if failure is None:
         return 0, {"status": "merged", "reason": "merged %s at %s." % (repo, sha[:12])}
     try:
+        # mergedAt is not read; it tells this re-read apart from the first `pr view` in tests/test_merge.py.
         after = forge.ask_json("reading the pull request again", "pr", "view", str(number), "--repo", repo, "--json", "state,headRefOid,mergedAt")
     except forge.Failed:
         after = {}

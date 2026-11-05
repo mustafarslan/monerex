@@ -437,9 +437,11 @@ alternatives are a dev container, a virtual machine, or a cloud session.
   no API merge, no `monerex.merge` set through git, no `gh alias set`) catch the usual
   spellings. They are not a wall: a quoted name, a command substitution or an abbreviated git
   option can get past them. Four review rounds showed that more text rules only move the gap,
-  so they stop there. A subagent set on reaching `merge.py` can; `merge.py` then merges only a
-  pull request whose head passed the checks and a `yes` review, with green CI and the owner's
-  opt-in.
+  so they stop there. A subagent set on reaching `merge.py` can, and it can also write the local
+  records `merge.py` reads (the check record, the task log, the opt-in in `.git/config`). What
+  still holds against it is what is not on this machine: CI on the pull request, GitHub's
+  `--match-head-commit`, and branch protection. Against an ordinary mistake, `merge.py`'s
+  local conditions hold as well.
 - **Ship installs and signs in to `gh`.** `monerex-setup` (`bin/`, running
   `scripts/gh_setup.py`) installs a missing `gh` only when given `--install`, and only with a
   package manager already present (`brew`, `winget`, `apt-get` when `sudo -n` needs no
