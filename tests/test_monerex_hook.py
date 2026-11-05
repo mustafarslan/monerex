@@ -753,20 +753,6 @@ class HookTest(unittest.TestCase):
         self.assert_denied(self.bash("env monerex-merge 5 --admin"), "monerex-merge <N>")
         self.assert_denied(self.bash("echo hi && monerex-merge 5", subagent=True), "subagent")
 
-    def test_a_subagent_cannot_reach_the_merge_script_by_another_spelling(self):
-        for command in (
-            "sh %s 5" % os.path.join(ROOT, "bin", "monerex-merge"),
-            "cd %s && python3 scripts/merge.py 5" % ROOT,
-            "bash -c 'monerex-merge 5'",
-            "find . -name merge.py -exec python3 {} 5 \\;",
-            "cat scripts/merge.py | python3 - 5",
-        ):
-            with self.subTest(command):
-                self.assert_denied(self.bash(command, subagent=True), "subagent never runs monerex-merge")
-        for command in ("grep -n merge.py README.md", "cat scripts/merge.py", "ls bin/monerex-merge", "rg monerex-merge skills | head -5"):
-            with self.subTest(command):
-                self.assert_allowed(self.bash(command, subagent=True))
-
     def test_the_merge_opt_in_is_never_set_by_an_agent(self):
         for command in (
             "git config monerex.merge after-checks",

@@ -19,7 +19,7 @@ CHECK = os.path.join(ROOT, "scripts", "check.py")
 
 FAKE_GH = """#!/bin/sh
 case "$1 $2" in
-  "pr view") case "$*" in *mergeCommit*) cat "$FAKE_STATE/after.json" ;; *) cat "$FAKE_STATE/pr.json" ;; esac ;;
+  "pr view") case "$*" in *mergedAt*) cat "$FAKE_STATE/after.json" ;; *) cat "$FAKE_STATE/pr.json" ;; esac ;;
   "repo view") echo '{"defaultBranchRef": {"name": "master"}}' ;;
   "pr checks") cat "$FAKE_STATE/checks.json"; exit "$(cat "$FAKE_STATE/checks.exit")" ;;
   "pr merge") for word in "$@"; do printf '%s\\n' "$word"; done > "$FAKE_STATE/merge.argv"; exit "$(cat "$FAKE_STATE/merge.exit")" ;;
@@ -130,10 +130,18 @@ class MergeTest(unittest.TestCase):
     def test_a_merge_that_went_through_though_gh_failed_is_merged(self):
         # gh can fail or time out after GitHub merged: the pull request's state says what happened.
         self.answer("merge.exit", "1")
-        self.answer("after.json", json.dumps({"state": "MERGED", "mergeCommit": {"oid": "3" * 40}}))
+        self.answer("after.json", json.dumps({"state": "MERGED", "headRefOid": self.head}))
         done, result = self.merge()
         self.assertEqual((result["status"], done.returncode), ("merged", 0))
         self.assertIn("gh pr merge reported a failure", result["reason"])
+
+    def test_a_merge_at_another_commit_is_not_reported_as_ours(self):
+        # The branch moved and someone merged it at the new head: not the reviewed commit.
+        self.answer("merge.exit", "1")
+        self.answer("after.json", json.dumps({"state": "MERGED", "headRefOid": "4" * 40}))
+        done, result = self.merge()
+        self.assertEqual((result["status"], done.returncode), ("failed", 2))
+        self.assertIn("other than the reviewed one", result["reason"])
 
     # ------------------------------------------------------------ refused
 

@@ -433,6 +433,13 @@ alternatives are a dev container, a virtual machine, or a cloud session.
   not an agent set on getting round them, the same as the pre-push rule. The check that is
   not on this machine is GitHub's `--match-head-commit`, which only merges the commit named;
   the only stop that does not depend on this machine at all is branch protection on the remote.
+  The hook's rules on shell text (`monerex-merge` only from the main session, no `gh pr merge`,
+  no API merge, no `monerex.merge` set through git, no `gh alias set`) catch the usual
+  spellings. They are not a wall: a quoted name, a command substitution or an abbreviated git
+  option can get past them. Four review rounds showed that more text rules only move the gap,
+  so they stop there. A subagent set on reaching `merge.py` can; `merge.py` then merges only a
+  pull request whose head passed the checks and a `yes` review, with green CI and the owner's
+  opt-in.
 - **Ship installs and signs in to `gh`.** `monerex-setup` (`bin/`, running
   `scripts/gh_setup.py`) installs a missing `gh` only when given `--install`, and only with a
   package manager already present (`brew`, `winget`, `apt-get` when `sudo -n` needs no

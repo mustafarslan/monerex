@@ -1402,27 +1402,6 @@ def is_merge_command(word):
     return os.path.realpath(word) == os.path.realpath(MERGE_SCRIPT) or word.endswith("/../../scripts/merge.py") and "$" in word
 
 
-SUBAGENT_MERGE_WORDS = re.compile(r"monerex-merge|merge\.py")
-READ_ONLY_COMMANDS = {"grep", "rg", "cat", "head", "tail", "wc", "ls", "find"}
-
-
-def only_reads(command):
-    """True when every command in the line is one that only reads, so a name in it is text.
-
-    `find -exec` runs a program, so a find that execs does not count.
-    """
-    found = False
-    for words in segments(command):
-        at = command_index(words)
-        if at >= len(words):
-            continue
-        name = os.path.basename(words[at])
-        if name not in READ_ONLY_COMMANDS or (name == "find" and any(w.startswith("-exec") or w.startswith("-ok") for w in words)):
-            return False
-        found = True
-    return found
-
-
 def merge_command_refusal(words, data):
     """Why this run of monerex-merge may not go, or None: the main session, one number, nothing else.
 
@@ -1484,10 +1463,6 @@ def pre_bash(data, root, config):
     broken = confidential(command, root)
     if broken:
         return deny("this command contains a %s. Nothing was run." % broken[0])
-    if data.get("agent_id") and SUBAGENT_MERGE_WORDS.search(command) and not only_reads(command):
-        # Anywhere in the line, not only where it is the command: `sh bin/monerex-merge 5` or a
-        # relative path after a `cd` run it too. merge.py's own conditions remain the real gate.
-        return deny("only the main session merges, through ship; a subagent never runs monerex-merge. Nothing was run.")
     for words in segments(command):
         reason = assignment_refusal(words) or merge_command_refusal(words, data)
         if reason:

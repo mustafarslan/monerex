@@ -118,9 +118,11 @@ def merge(root, number):
     if failure is None:
         return 0, {"status": "merged", "reason": "merged %s at %s." % (repo, sha[:12])}
     try:
-        after = forge.ask_json("reading the pull request again", "pr", "view", str(number), "--repo", repo, "--json", "state,mergeCommit")
+        after = forge.ask_json("reading the pull request again", "pr", "view", str(number), "--repo", repo, "--json", "state,headRefOid,mergedAt")
     except forge.Failed:
         after = {}
+    if after.get("state") == "MERGED" and after.get("headRefOid") != sha:
+        return 2, {"status": "failed", "reason": "pull request %d was merged at a commit other than the reviewed one; check it by hand." % number}
     if after.get("state") == "MERGED":
         return 0, {"status": "merged", "reason": "gh pr merge reported a failure (%s), but pull request %d is merged." % (failure, number)}
     return 2, {"status": "failed", "reason": "gh pr merge failed (%s)." % failure}
