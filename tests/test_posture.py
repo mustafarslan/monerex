@@ -69,7 +69,7 @@ class PostureTest(unittest.TestCase):
         self.report("--once")
         self.settings({"sandbox": {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True,
                                    "network": {"allowedDomains": []},
-                                   "excludedCommands": ["git push:*", "gh:*"]},
+                                   "excludedCommands": ["git push *", "git fetch *", "gh *", "monerex-setup *"]},
                        "permissions": {"ask": ["Bash(git push:*)"], "deny": ["Read(./.env)"]}})
         self.assertIn("in place", self.report("--once"))
         os.remove(os.path.join(self.repo, ".claude", "settings.local.json"))
@@ -77,16 +77,24 @@ class PostureTest(unittest.TestCase):
 
     def test_a_sandbox_that_cuts_pushes_off_is_a_gap(self):
         name = "pushes and gh can reach the code host"
-        missing = json.loads(self.report("--json"))["missing"]
-        self.assertNotIn(name, missing)  # with the sandbox off nothing cuts them off
-        self.settings({"sandbox": {"enabled": True}})
-        self.assertIn(name, json.loads(self.report("--json"))["missing"])
-        self.settings({"sandbox": {"enabled": True, "excludedCommands": ["git push:*"]}})
-        self.assertIn(name, json.loads(self.report("--json"))["missing"])
-        self.settings({"sandbox": {"enabled": True, "excludedCommands": ["git push:*", "gh:*"]}})
+        missing = lambda: json.loads(self.report("--json"))["missing"]
+        self.assertNotIn(name, missing())  # with the sandbox off nothing cuts them off
+        for excluded in ([], ["git push:*", "gh:*"], ["git push *", "git fetch *", "gh *"], ["git p*", "git fetch *", "gh *", "monerex-setup *"]):
+            with self.subTest(excluded):
+                self.settings({"sandbox": {"enabled": True, "excludedCommands": excluded}})
+                self.assertIn(name, missing())
+        for excluded in (["git push *", "git fetch *", "gh *", "monerex-setup *"], ["git *", "gh:*", "monerex-setup"]):
+            with self.subTest(excluded):
+                self.settings({"sandbox": {"enabled": True, "excludedCommands": excluded}})
+                self.assertNotIn(name, missing())
+        self.assertEqual(len(json.loads(self.report("--json"))["checks"]), 7)
+
+    def test_the_excluded_commands_of_every_settings_file_count(self):
+        name = "pushes and gh can reach the code host"
+        self.settings({"sandbox": {"enabled": True, "excludedCommands": ["git *"]}})
+        with open(os.path.join(self.repo, ".claude", "settings.json"), "w", encoding="utf-8") as handle:
+            json.dump({"sandbox": {"excludedCommands": ["gh *", "monerex-setup *"]}}, handle)
         self.assertNotIn(name, json.loads(self.report("--json"))["missing"])
-        checks = json.loads(self.report("--json"))["checks"]
-        self.assertEqual(len(checks), 7)
 
     def test_json_is_unchanged_by_what_was_seen(self):
         self.report("--once")

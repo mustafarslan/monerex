@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Pushes the current branch, opens its pull request and watches its checks. Runs after review closes a task, from start or bugfix, or when the user asks to ship. The user approves the title and description before anything is posted; the merge is theirs unless the repository sets "merge" to "after-checks".
+description: Pushes the current branch, opens its pull request and watches its checks. Runs after review closes a task, from start or bugfix, or when the user asks to ship. The user approves the title and description before anything is posted; the merge is theirs unless they ran `git config monerex.merge after-checks`.
 argument-hint: "[base branch, default the repository's default branch]"
 ---
 
@@ -12,22 +12,27 @@ pull request and run every command yourself; never ask the user to run one.
 
 ## 0. gh is there and signed in
 
+Before anything that needs gh:
+
 ```sh
-python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/gh_setup.py" --login
+monerex-setup --login
 ```
 
-It prints one JSON line. `ready` → go on. `awaiting-browser` → tell the user in one line:
-"Open <url> and enter <code>", then run the same script with `--wait 300`, with a command
-timeout above five minutes. Any other status, or `--wait` ending without `ready`, means the
-install or the login failed: report this stage as not done, with the `reason`, and stop.
-Never print a token or gh's own output.
+It prints one JSON line. `ready` → go on. `needs-install` with an `install` command → run
+`monerex-setup --install --login`, a command of its own so the install is seen.
+`awaiting-browser` → tell the user in one line: "Open <url> and enter <code>", then run
+`monerex-setup --wait 300`, with a command timeout above five minutes. Anything else, or
+`--wait` ending without `ready` (`needs-credential` included), means the install, the login or
+git's credential failed: report this stage as not done, with the `reason`, and stop. Never
+print a token or gh's own output.
 
 ## 1. Is it ready
 
 - The branch is not the default branch.
 - `python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/check.py" --status` says the checks passed
   on this commit. If not, run them; a branch with failing or stale checks is not shipped.
-- The task was reviewed. If the task log shows no review, say so and ask whether to go on.
+- The task was reviewed. A T0 task has none (the task log's `start` has the tier): do not ask.
+  For any other tier with no review in the log, say so and ask whether to go on.
 - `git status` is clean. Uncommitted work is not part of what ships.
 - If the repository has `evals/baselines.json` and the branch changes `skills/`, `agents/`,
   `hooks/`, `githooks/`, `routing/`, `workflows/`, `scripts/`, `templates/`, `bin/`,
@@ -76,19 +81,21 @@ monerex-forge checks <N> --repo <R>
   then stop and report. A check that looks flaky gets one rerun:
   `gh run rerun <run> --repo <R> --failed`.
 
-## 5. Merge, only when the repository opts in
+## 5. Merge, only when the owner opts in
 
-Only when `.monerex/config.json` sets `"merge": "after-checks"`, the checks in step 4 are
-green, and the task's review was logged with `--merge yes`:
+Only when the owner ran `git config monerex.merge after-checks` in their checkout, the
+checks in step 4 are green, and the task's latest review was logged with `--merge yes` on
+this commit. A T0 task has no review, so it is never merged here: say so, and leave it.
 
 ```sh
-gh pr merge <N> --repo <R> --merge --delete-branch
+gh pr merge <N> --repo <R> --merge --delete-branch --match-head-commit "$(git rev-parse HEAD)"
 git fetch origin <base>
-git merge --ff-only origin/<base>
 ```
 
-The last command runs on `<base>`: in the checkout that has it, or here after `git switch
-<base>`. Never with `--admin` or `--auto`. Otherwise the merge is the user's: skip this step.
+The guard lets it through only on the commit both the checks and the review passed; a fix
+after the review needs a new review first. Never with `--admin` or `--auto`. In the main
+checkout, then `git switch <base>` and `git merge --ff-only origin/<base>`; in a worktree,
+the fetch is all. Otherwise the merge is the user's: skip this step.
 
 ## 6. Hand over
 

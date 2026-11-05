@@ -43,7 +43,7 @@ You type the commands marked *typed*; the others run when the stage before them 
 | **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks; the change is committed and taken out once more to prove its tests fail without it | — |
 | **verify** | after `build` | A fresh agent runs the checks itself and compares the diff with the plan | — |
 | **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context, cost that grows with the input included: one reviewer, up to four with separate angles for a feature or a risk flag (five when the diff touches a query, a remote call or a loop over outside data), and, on a risk-flagged change, a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
-| **ship** | after `review`, when the repository has a code host, or typed: `/monerex:ship` | Installs `gh` and starts its login if needed, writes the pull request text, then pushes the branch, opens the pull request and watches its checks | **the text**; **the merge** is yours unless you set `"merge": "after-checks"` |
+| **ship** | after `review` says yes (or a T0's checks), when `origin` names a GitHub repository, or typed: `/monerex:ship` | Installs `gh` and starts its login if needed, writes the pull request text, then pushes the branch, opens the pull request and watches its checks | **the text**; **the merge** is yours unless you ran `git config monerex.merge after-checks` |
 | **feedback** | typed: `/monerex:feedback [PR]` | Treats each review comment on your pull request as a claim, checks it, fixes what holds, and drafts a reply for every thread | what to fix, and **every reply** |
 | **bugfix** | typed: `/monerex:bugfix <issue>` | A test that fails for the reported symptom, the fix, proof that the test fails again without it, then verify, review, the pull request (draft if you say so) and one round of answers to its review comments; the test is locked for the rest of the task | the plan, **the pull request text** and **every reply** |
 | **retro** | typed: `/monerex:retro` | Reads the task and routing logs and proposes a handful of changes to the way of working, each tied to a number, and says whether the changes you accepted earlier moved their numbers | each change |
@@ -195,10 +195,14 @@ no server, sends nothing to its author, and collects no telemetry.
   failed check; creating a pull request and posting a review, a reply or a comment happen
   only after you approve the exact text, which is first scanned for secrets, hidden characters
   and your private terms, and `feedback` marks the review threads it fixed
-  as resolved. monerex merges only when `.monerex/config.json` sets `"merge": "after-checks"`,
-  from the main session, after the checks passed on the commit, never with `--admin` or `--auto`.
-- **Installing `gh`.** When `gh` is missing, `ship` installs it with a package manager already
-  on the machine (`brew`, `winget`, `apt-get` when `sudo` needs no password, or `conda`);
+  as resolved. monerex merges only after you ran `git config monerex.merge after-checks` in
+  your own checkout (a setting in your local git config, not in the committed repository; a
+  worktree cannot supply it). Then `ship` merges from the main session, the `origin`
+  repository only, never with `--admin` or `--auto`, and only the commit named with
+  `--match-head-commit` on which the checks passed and the task's review said yes; a change
+  after that review needs a new one. A T0 task has no review and is never merged by monerex.
+- **Installing `gh`.** When `gh` is missing, `ship` runs `monerex-setup --install` (a command
+  of its own, so you see it), which installs it with a package manager already on the machine (`brew`, `winget`, `apt-get` when `sudo` needs no password, or `conda`);
   nothing is downloaded and run. When `gh` is not signed in, it starts `gh auth login --web`
   and shows you the one-time code and the address to enter it; then it runs
   `gh auth setup-git` so git pushes with that sign-in. It never prints a token or `gh`'s output.
@@ -271,12 +275,15 @@ has the threat model, what each guard covers and does not, and a sandbox profile
 - `checks`: the commands that must pass before a push;
 - `external_review`: `off`, `diff-only` or `on`, and `second_reviewer`: `agy`;
 - `engage`: `typed` keeps the loop for the typed command only;
-- `merge`: `after-checks` lets `ship` merge its pull request once its checks are green and
-  the review said yes, and only when `checks` lists at least one command; unset, the merge is yours;
 - `max_open_tasks`: how many background monerex sessions (started with `/monerex:dispatch`)
   may be open before `start` and `dispatch` ask; 2 by default;
 - `models`: which Claude model each tier (`small`, `mid`, `large`) and the `advisor` mean;
   see `routing/routing.json`.
+
+Merging is not set here: a committed file would let anyone who can change the repository
+turn it on. `git config monerex.merge after-checks`, run in your own checkout, lets `ship`
+merge a pull request once its checks are green and the review said yes on that commit, and
+only when `checks` lists at least one command. `git config --unset monerex.merge` turns it off.
 
 [Optional capabilities](capabilities.md) lists what else monerex uses when it is installed.
 

@@ -101,4 +101,4 @@ report, not worked.
 
 What the symptom was, the cause, the test that proves it, the pull request, the state of its
 checks, what was answered, and what was not run. Keep the worktree; print the two commands
-that would remove it. The merge is the user's unless ship merged under `"merge": "after-checks"`.
+that would remove it. The merge is the user's unless ship merged it under `monerex.merge`.

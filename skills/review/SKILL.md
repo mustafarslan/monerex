@@ -94,7 +94,8 @@ no longer there.
 - **Architecture (measured)** — what `oxn.md` measured in this review, as it is; its numbers are
   the tool's, never restated. When it did not run, its reason goes under *Not run*.
 - **Not run** — any reviewer or check that was skipped, and why.
-- **Merge?** — your recommendation. The decision is the user's.
+- **Merge?** — your recommendation. On `yes`, ship merges by itself when the owner has opted
+  in with `git config monerex.merge after-checks`; otherwise the decision is the user's.
 
 When the review closes a monerex task, log the counts, which `task.py` refuses unless a
 `monerex:reviewer` ran since the latest implementer, verify or review in this task, and the end

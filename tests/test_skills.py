@@ -81,13 +81,19 @@ class SkillTest(unittest.TestCase):
 
     def test_ship_sets_up_gh_first_and_start_continues_into_it(self):
         ship = " ".join(self.skills["ship"][1].split())
-        self.assertIn('python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/gh_setup.py" --login', ship)
-        self.assertIn('"merge": "after-checks"', ship)
+        self.assertIn("monerex-setup --login", ship)
+        self.assertIn("monerex-setup --install --login", ship)
+        self.assertLess(ship.index("monerex-setup"), ship.index("check.py"), "gh is set up before anything that needs it")
+        self.assertIn('--match-head-commit "$(git rev-parse HEAD)"', ship)
+        self.assertIn("git config monerex.merge after-checks", ship)
         start = " ".join(self.skills["start"][1].split())
         self.assertIn("`monerex:ship`", start)
-        # T0 has no review, and ships too: edit, checks, commit on its branch, then ship.
+        self.assertIn("`code_host.repo`", start)
+        self.assertIn("`--merge yes`", start)
+        self.assertIn('git switch -c "monerex/<slug>" "origin/<base>"', start)
+        # T0 has no review, and ships too: edit, commit on its branch, checks, then ship.
         t0 = start[start.index("**T0** —"):start.index("**T1** —")]
-        self.assertIn("commit", t0)
+        self.assertLess(t0.index("commit"), t0.index("check.py"))
         self.assertIn("`monerex:ship`", t0)
 
     def test_retro_writes_its_file_even_when_it_proposes_nothing(self):

@@ -62,18 +62,33 @@ def rules(settings, kind):
     return found
 
 
-def reaches_code_host(settings):
-    """Whether ship's push and gh calls get past the sandbox: it is off, or it leaves both out.
+# What ship runs that must reach the code host, so must be left out of the sandbox.
+CODE_HOST_COMMANDS = ("git push", "git fetch", "gh", "monerex-setup")
 
-    With the sandbox on and no host approved, a push and every gh call would be cut off.
-    """
+
+def covers(entry, command):
+    """Whether an `excludedCommands` entry covers a command: with its trailing ` *` or `:*`
+    taken off, it is the command or a whole-word prefix of it, so `git *` covers `git push`."""
+    for tail in (" *", ":*"):
+        if entry.endswith(tail):
+            entry = entry[: -len(tail)]
+            break
+    entry = entry.strip()
+    return bool(entry) and (command == entry or command.startswith(entry + " "))
+
+
+def reaches_code_host(settings):
+    """Whether ship's push, fetch and gh calls get past the sandbox: it is off, or the
+    `excludedCommands` of all the settings files together leave every one of them out."""
     if first(settings, "sandbox", "enabled") is not True:
         return True
-    excluded = first(settings, "sandbox", "excludedCommands")
-    words = [entry for entry in excluded if isinstance(entry, str)] if isinstance(excluded, list) else []
-    pushes = any(entry.startswith("git push") for entry in words)
-    gh = any(entry == "gh" or entry.startswith(("gh ", "gh:")) for entry in words)
-    return pushes and gh
+    entries = []
+    for _, data in settings:
+        sandbox = data.get("sandbox") if isinstance(data, dict) else None
+        excluded = sandbox.get("excludedCommands") if isinstance(sandbox, dict) else None
+        if isinstance(excluded, list):
+            entries.extend(entry for entry in excluded if isinstance(entry, str))
+    return all(any(covers(entry, command) for entry in entries) for command in CODE_HOST_COMMANDS)
 
 
 def assess(root):

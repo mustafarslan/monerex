@@ -32,7 +32,7 @@ case "$*" in
     echo "! First copy your one-time code: AB12-CD34" >&2
     echo "Press Enter to open github.com in your browser..." >&2
     if test -f "$FAKE_STATE/login-completes"; then /bin/sleep 1; : > "$FAKE_STATE/logged-in"; fi ;;
-  "auth setup-git"*) echo "%(token)s" ;;
+  "auth setup-git"*) echo "%(token)s"; ! test -f "$FAKE_STATE/setup-git-fails" ;;
 esac
 """ % {"token": TOKEN}
 
@@ -88,6 +88,9 @@ class GhSetupTest(unittest.TestCase):
                      'while IFS= read -r line; do printf "%%s\\n" "$line"; done < "%s" > "%s/gh"\n'
                      '/bin/chmod +x "%s/gh"' % (template, self.bin, self.bin))
         _, result = self.run_setup()
+        # Without --install it only says what it would run.
+        self.assertEqual((result["status"], result["install"], self.calls("brew")), ("needs-install", "brew install gh", []))
+        _, result = self.run_setup("--install")
         self.assertEqual(self.calls("brew"), ["install gh"])
         self.assertEqual((result["gh"], result["installed_now"], result["version"]), (True, True, "2.99.0"))
         self.assertEqual((result["auth"], result["status"]), ("logged-out", "logged-out"))
@@ -95,12 +98,12 @@ class GhSetupTest(unittest.TestCase):
     def test_apt_get_is_used_only_when_sudo_needs_no_password(self):
         self.program("apt-get", 'echo "$*" >> "$FAKE_STATE/apt-get.calls"')
         self.program("sudo", 'echo "$*" >> "$FAKE_STATE/sudo.calls"\nexit 1')
-        _, result = self.run_setup()
+        _, result = self.run_setup("--install")
         self.assertEqual(self.calls("sudo"), ["-n true"])
         self.assertEqual(self.calls("apt-get"), [])
         self.assertEqual(result["status"], "needs-install")
         self.program("sudo", 'echo "$*" >> "$FAKE_STATE/sudo.calls"\nexit 0')
-        self.run_setup()
+        self.run_setup("--install")
         self.assertEqual(self.calls("sudo")[-1], "-n apt-get install -y gh")
 
     def test_logged_out_with_login_it_prints_the_one_time_code(self):
@@ -111,7 +114,7 @@ class GhSetupTest(unittest.TestCase):
         _, result = self.run_setup("--login")
         self.assertEqual((result["status"], result["code"], result["url"]), ("awaiting-browser", "AB12-CD34", "https://github.com/login/device"))
         login = [call for call in self.calls("gh") if call.startswith("auth login")]
-        self.assertEqual(login, ["auth login --hostname github.com --git-protocol https --web --skip-ssh-key"])
+        self.assertEqual(login, ["auth login --hostname github.com --git-protocol https --web"])
         self.assertFalse([call for call in self.calls("gh") if call.startswith("auth setup-git")])
 
     def test_when_the_browser_login_completes_wait_sets_up_git(self):
@@ -140,6 +143,49 @@ class GhSetupTest(unittest.TestCase):
         self.assertIn("auth status --hostname github.com", self.calls("gh"))
         self.assertIn("auth setup-git --hostname github.com", self.calls("gh"))
         self.assertFalse([call for call in self.calls("gh") if call.startswith("auth login")])
+
+
+    def test_a_failed_git_credential_setup_stops_ship(self):
+        self.program("gh", FAKE_GH)
+        open(os.path.join(self.state, "logged-in"), "w").close()
+        open(os.path.join(self.state, "setup-git-fails"), "w").close()
+        done, result = self.run_setup("--login")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual((result["status"], result["git_credential"]), ("needs-credential", "failed"))
+
+    def test_after_winget_gh_is_found_where_it_installs(self):
+        # winget puts gh under Program Files, which an open shell's PATH does not have yet.
+        program_files = os.path.join(self.tmp, "Program Files")
+        self.env["ProgramFiles"] = program_files
+        template = os.path.join(self.tmp, "gh.template")
+        with open(template, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\n" + FAKE_GH)
+        target = os.path.join(program_files, "GitHub CLI")
+        self.program("winget", 'echo "$*" >> "$FAKE_STATE/winget.calls"\n'
+                     '/bin/mkdir -p "%s"\n'
+                     'while IFS= read -r line; do printf "%%s\\n" "$line"; done < "%s" > "%s/gh.exe"\n'
+                     '/bin/chmod +x "%s/gh.exe"' % (target, template, target, target))
+        _, result = self.run_setup("--install")
+        self.assertEqual(self.calls("winget"), ["install --id GitHub.cli -e --silent"])
+        self.assertEqual((result["gh"], result["installed_now"], result["version"]), (True, True, "2.99.0"))
+
+    def test_the_launcher_runs_the_script(self):
+        self.program("gh", FAKE_GH)
+        open(os.path.join(self.state, "logged-in"), "w").close()
+        self.env["PATH"] = os.pathsep.join([self.bin, os.path.dirname(sys.executable), "/usr/bin", "/bin"])
+        done = subprocess.run([os.path.join(ROOT, "bin", "monerex-setup")], cwd=self.tmp, env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((done.returncode, json.loads(done.stdout)["status"]), (0, "ready"), done.stderr)
+
+    def test_a_token_in_a_reason_is_redacted(self):
+        script = (
+            "import sys; sys.path.insert(0, %r); import gh_setup\n"
+            "gh_setup.ensure = lambda **_: {'status': 'login-failed', 'reason': 'gh said %s'}\n"
+            "sys.exit(gh_setup.main([]))\n" % (os.path.dirname(GH_SETUP), TOKEN)
+        )
+        done = subprocess.run([sys.executable, "-I", "-c", script], cwd=self.tmp, env=self.env, capture_output=True, text=True)
+        self.assertNotIn(TOKEN, done.stdout)
+        self.assertEqual(json.loads(done.stdout)["reason"], "gh said [redacted]")
+        self.assertEqual(done.returncode, 1)
 
 
 if __name__ == "__main__":

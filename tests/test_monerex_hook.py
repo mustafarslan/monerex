@@ -719,43 +719,144 @@ class HookTest(unittest.TestCase):
     def test_merging_is_never_done_by_monerex(self):
         self.assert_denied(self.bash("gh pr merge 12 --squash"), "merging is the user's decision")
 
-    def test_a_merge_runs_only_when_the_repository_opts_in_and_the_checks_passed(self):
-        merge = "gh pr merge 12 --repo o/r --merge --delete-branch"
+    # ------------------------------------------------------------ merging, opted in
+
+    def head(self, cwd=None):
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd or self.repo, env=self.env, capture_output=True, text=True).stdout.strip()
+
+    def log_review(self, head, merge="yes", cwd=None, slug="t1"):
+        path = os.path.join(cwd or self.repo, ".monerex", "log", "tasks.jsonl")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "start", "tier": "T1"}) + "\n")
+            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "review", "merge": merge, "head": head}) + "\n")
+            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "done"}) + "\n")
+
+    def ready_to_merge(self):
+        """Opted in, checks listed and passed, origin o/r, the review said yes on HEAD."""
         self.configure({"checks": ["test -f a.txt"]})
+        self.git("remote", "add", "origin", "git@github.com:o/r.git")
+        self.git("config", "monerex.merge", "after-checks")
         self.assertEqual(self.run_checks().returncode, 0)
-        self.assert_denied(self.bash(merge), "merging is the user's decision unless .monerex/config.json sets")
-        self.configure({"checks": ["test -f a.txt"], "merge": "something-else"})
-        self.assertEqual(self.run_checks().returncode, 0)
-        self.assert_denied(self.bash(merge), "merging is the user's decision")
+        head = self.head()
+        self.log_review(head)
+        return "gh pr merge 12 --repo o/r --merge --delete-branch --match-head-commit " + head
+
+    def test_a_merge_runs_when_opted_in_on_the_checked_and_reviewed_commit(self):
+        merge = self.ready_to_merge()
+        self.assert_allowed(self.bash(merge))
+        self.assert_allowed(self.bash('gh pr merge 12 --repo o/r --merge --match-head-commit "$(git rev-parse HEAD)"'))
+        self.assert_allowed(self.bash("gh pr merge 12 -R O/R --match-head-commit " + self.head()))
+
+    def test_without_the_local_opt_in_a_merge_is_the_user_s(self):
+        merge = self.ready_to_merge()
+        self.git("config", "--unset", "monerex.merge")
+        self.assert_denied(self.bash(merge), "merging is the user's decision unless")
+        # The committed config is no longer read for it.
         self.configure({"checks": ["test -f a.txt"], "merge": "after-checks"})
         self.assertEqual(self.run_checks().returncode, 0)
-        self.assert_allowed(self.bash(merge))
-        self.assert_allowed(self.bash("gh pr merge 12 --repo o/r"))
-        self.assert_denied(self.bash(merge, subagent=True), "subagent")
-        self.assert_denied(self.bash(merge + " --admin"), "--admin")
-        self.assert_denied(self.bash(merge + " --auto"), "--auto")
-        self.assert_denied(self.bash("gh api -X PUT repos/o/r/pulls/12/merge"), "merging is the user's decision")
-        # Stale checks: a commit after the run.
-        self.put("b.txt", "more\n")
-        self.git("add", "b.txt")
-        self.git("commit", "-q", "-m", "second")
-        self.assert_denied(self.bash(merge), "a different commit")
+        self.log_review(self.head())
+        self.assert_denied(self.bash(merge.rsplit(" ", 1)[0] + " " + self.head()), "merging is the user's decision unless")
+        self.git("config", "monerex.merge", "always")
+        self.assert_denied(self.bash(merge.rsplit(" ", 1)[0] + " " + self.head()), "merging is the user's decision unless")
+
+    def test_a_merge_is_refused_for_each_condition_that_fails(self):
+        merge = self.ready_to_merge()
+        head = self.head()
+        for command, fragment, subagent in (
+            (merge, "subagent", True),
+            (merge + " --admin", "--admin", False),
+            (merge + " --auto", "--auto", False),
+            (merge.replace("--repo o/r", "--repo someone/else"), "origin", False),
+            (merge.replace("--repo o/r ", ""), "origin", False),
+            ("gh pr merge 12 --repo o/r --merge", "--match-head-commit", False),
+            ("gh pr merge 12 --repo o/r --match-head-commit " + "0" * 40, "", False),
+            ("gh pr merge 12 --repo o/r --match-head-commit=$(git rev-parse HEAD)", "", False),
+            ("git commit -qam x && " + merge, "moves a branch", False),
+        ):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command, subagent=subagent), fragment)
+        self.log_review(head, merge="after-fixes")
+        self.assert_denied(self.bash(merge), "review")
 
     def test_a_merge_needs_the_repository_s_checks(self):
-        self.configure({"merge": "after-checks"})
-        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --merge"), "a merge needs the repository's checks; .monerex/config.json lists none")
-        self.configure({"merge": "after-checks", "checks": []})
-        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --merge"), "lists none")
+        self.ready_to_merge()
+        self.configure({})
+        head = self.head()
+        self.log_review(head)
+        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --match-head-commit " + head),
+                           "a merge needs the repository's checks; .monerex/config.json lists none")
+
+    def test_a_commit_after_the_review_needs_a_new_review_and_new_checks(self):
+        self.ready_to_merge()
+        self.put("b.txt", "fix for CI\n")
+        self.git("add", "b.txt")
+        self.git("commit", "-q", "-m", "fix CI")
+        merge = "gh pr merge 12 --repo o/r --match-head-commit " + self.head()
+        self.assert_denied(self.bash(merge), "a different commit")
+        self.assertEqual(self.run_checks().returncode, 0)
+        self.assert_denied(self.bash(merge), "review")
+        self.log_review(self.head())
+        self.assert_allowed(self.bash(merge))
+
+    def test_a_worktree_cannot_supply_the_merge_opt_in(self):
+        merge = self.ready_to_merge()
+        self.git("config", "--unset", "monerex.merge")
+        self.git("config", "extensions.worktreeConfig", "true")
+        tree = self.worktree(".claude/worktrees/w1")
+        subprocess.run(["git", "config", "--worktree", "monerex.merge", "after-checks"], cwd=tree, env=self.env, check=True)
+        subprocess.run([sys.executable, "-I", CHECK], cwd=tree, env=self.env, capture_output=True)
+        self.log_review(self.head(tree), cwd=tree)
+        done = self.run_hook("pre-bash", {"command": "gh pr merge 12 --repo o/r --match-head-commit " + self.head(tree)}, cwd=tree)
+        self.assert_denied(done, "merging is the user's decision unless")
+
+    def test_the_merge_opt_in_is_asked_for_and_never_set_by_a_subagent(self):
+        for command in (
+            "git config monerex.merge after-checks",
+            "git config --local monerex.merge after-checks",
+            "git config set monerex.merge after-checks",
+            "git -c monerex.merge=after-checks status",
+            "git config alias.m '!git config monerex.merge after-checks'",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=monerex.merge GIT_CONFIG_VALUE_0=after-checks git status",
+        ):
+            with self.subTest(command):
+                self.assert_asked(self.bash(command), "monerex.merge")
+                self.assert_denied(self.bash(command, subagent=True), "monerex.merge")
+        for command in ("git config --unset monerex.merge", "git config unset monerex.merge", "git config --get monerex.merge"):
+            with self.subTest(command):
+                self.assert_allowed(self.bash(command))
+                self.assert_allowed(self.bash(command, subagent=True))
+        self.assert_denied(self.bash("git config monerex.defaultBranch other"), "monerex's own settings")
+
+    def test_a_merge_through_the_api_is_refused(self):
+        self.ready_to_merge()
+        for command in (
+            "gh api -X PUT repos/o/r/pulls/12/merge",
+            "gh api -X PUT 'repos/o/r/pulls/12/merge?merge_method=squash'",
+            "gh api -X PUT /repos/o/r/pulls/12/merge/",
+            "gh api repos/o/r/merges -f base=master -f head=feature",
+            "gh api 'repos/o/r/merges?x=1' -f base=master",
+            "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+            "gh api graphql -F query='mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }'",
+            "gh api graphql -f query='mutation { MERGEBRANCH(input: {}) { clientMutationId } }'",
+        ):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command), "merging is the user's decision")
+        done = self.bash("gh api graphql -f query='query { repository(owner: \"o\", name: \"r\") { name } }'")
+        self.assertNotIn("merging", done.stderr)
 
     def test_a_checks_refusal_tells_the_agent_what_to_do(self):
         self.configure({"checks": ["test -f a.txt"]})
         done = self.bash("git push origin feature")
-        self.assert_denied(done, "yourself, then retry the push in a command of its own; nothing is needed from the user")
+        self.assert_denied(done, "the checks gate needs a passing run on this commit")
+        self.assertIn("yourself, then retry the push in a command of its own; nothing is needed from the user", done.stderr)
         self.assertIn("scripts/check.py", done.stderr)
         self.assertEqual(self.run_checks().returncode, 0)
         done = self.bash("git commit -qam x && git push origin feature")
         self.assert_denied(done, "moves a branch")
         self.assertIn("nothing is needed from the user", done.stderr)
+        # Each refusal has a phrase of its own, so an eval can tell them apart.
+        self.assertNotIn("the checks gate needs a passing run on this commit", done.stderr)
 
     def test_a_command_with_a_denylisted_term_is_denied(self):
         done = self.bash("git commit -m 'work for %s'" % TERM)

@@ -402,6 +402,18 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
         self.assertEqual(self.events()[-1]["event"], "review")
 
+    def test_a_review_records_the_commit_it_reviewed(self):
+        # Ship merges only the commit the review said yes on.
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "x"], cwd=self.repo, env=self.env, check=True)
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, env=self.env, capture_output=True, text=True).stdout.strip()
+        self.run_script(TASK, "event", "start", "--slug", "h", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["head"]), ("review", head))
+        self.run_script(TASK, "event", "done")
+        self.assertNotIn("head", self.events()[-1])
+
     def test_a_reviewer_from_before_the_last_verify_does_not_count(self):
         # Bugfix dispatches a reviewer to doubt the root cause long before its review stage.
         import time

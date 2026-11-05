@@ -6,6 +6,7 @@
   task.py event escalation --gap knowledge
   task.py event verify --verdict pass
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
+                                           also records the reviewed commit as `head`
   task.py event ablation --result exempt   a T0 has no gate; ablate.py logs every other result itself
   task.py event done
   task.py status [--json]                  the open task: the stages behind it and the next one
@@ -580,6 +581,10 @@ def main(argv=None):
                   "is reported as not run, never logged as passed." % (agent, when, what, how), file=sys.stderr)
             return 2
     fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected")}
+    if args.name == "review":
+        # The commit the review said its word on: ship merges only that one.
+        done = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True)
+        fields["head"] = done.stdout.decode().strip() or None
     record = append(root, args.name, slug=args.slug, **fields)
     print("monerex: logged %s for %s" % (args.name, record["task"]) if record else "monerex: no open task; nothing logged")
     return 0

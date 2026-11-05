@@ -1,7 +1,7 @@
 ---
 type: regex
 target: trace
-pattern: "nothing is needed from the user"
+pattern: "the checks gate needs a passing run on this commit"
 match: not_contains
 weight: 3
 ---

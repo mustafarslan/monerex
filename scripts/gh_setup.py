@@ -4,15 +4,20 @@
 Prints one JSON line: {status, gh, version, installed_now, auth, git_credential} and, when a
 login was started or waited for, `login`. Ship runs it before it pushes. Standard library only.
 
-  gh_setup.py            install gh if it is missing, read whether it is signed in
-  gh_setup.py --login    when signed out, start the browser login and print its one-time code
-  gh_setup.py --wait N   wait at most N seconds (300 at most) for that login to finish
+  gh_setup.py              read whether gh is installed and signed in; when it is missing,
+                           name the install command it would run
+  gh_setup.py --install    install gh if it is missing (a command of its own, so it is seen)
+  gh_setup.py --login      when signed out, start the browser login and print its one-time code
+  gh_setup.py --wait N     wait at most N seconds (300 at most) for that login to finish
+
+`bin/monerex-setup` runs this script, so a sandbox profile can leave it out by name.
 
 gh is installed only through a package manager already on the machine: brew, winget, apt-get
 (only when sudo needs no password) or conda. Nothing is downloaded and run. gh's own output is
 never printed; only what this script parsed from it, and never a token.
 
-Status: ready, needs-install, logged-out, awaiting-browser, login-failed, login-timeout.
+Status: ready, needs-install, logged-out, awaiting-browser, login-failed, login-timeout,
+needs-credential (signed in, but git was not pointed at gh's credential).
 """
 
 import json
@@ -42,9 +47,22 @@ def seconds(name, default):
         return float(default)
 
 
+def gh_path():
+    """gh on PATH, else where winget installs it, which an open shell's PATH may not have yet."""
+    found = shutil.which("gh")
+    if found:
+        return found
+    folder = os.environ.get("ProgramFiles")
+    if folder:
+        candidate = os.path.join(folder, "GitHub CLI", "gh.exe")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def run(argv, timeout=600):
     """Run a program found on PATH, quietly. Its return code, or None when it cannot run."""
-    path = shutil.which(argv[0])
+    path = gh_path() if argv[0] == "gh" else shutil.which(argv[0])
     if not path:
         return None
     try:
@@ -68,13 +86,13 @@ def installers():
     return found
 
 
-def install():
-    """(installed, reason). Tries each package manager present until gh is on PATH."""
+def install(found=None):
+    """(installed, reason). Tries each package manager present until gh can be found."""
     tried = []
-    for argv in installers():
+    for argv in found if found is not None else installers():
         tried.append(" ".join(argv))
         run(argv)
-        if shutil.which("gh"):
+        if gh_path():
             return True, "installed with: " + " ".join(argv)
     if not tried:
         return False, "gh is not installed and no package manager that has it (brew, winget, apt-get with sudo, conda) is usable here. Install it from %s." % INSTALL_URL
@@ -82,7 +100,7 @@ def install():
 
 
 def version():
-    path = shutil.which("gh")
+    path = gh_path()
     try:
         done = subprocess.run([path, "--version"], stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError, TypeError):
@@ -107,7 +125,7 @@ def start_login():
     try:
         with open(path, "wb") as sink:
             process = subprocess.Popen(
-                [shutil.which("gh"), "auth", "login", "--hostname", HOST, "--git-protocol", "https", "--web", "--skip-ssh-key"],
+                [gh_path(), "auth", "login", "--hostname", HOST, "--git-protocol", "https", "--web"],
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=sink, **detached,
             )
         try:
@@ -127,11 +145,12 @@ def start_login():
     except OSError:
         return None
     finally:
-        try:
-            os.remove(path)
-            os.rmdir(folder)
-        except OSError:
-            pass
+        # On Windows a file gh still holds open cannot be removed; it is left in the temp folder.
+        for remove, target in ((os.remove, path), (os.rmdir, folder)):
+            try:
+                remove(target)
+            except OSError:
+                pass
 
 
 def wait_for_login(limit):
@@ -145,10 +164,15 @@ def wait_for_login(limit):
         time.sleep(interval)
 
 
-def ensure(login=False, wait=None):
+def ensure(login=False, wait=None, install_now=False):
     result = {"status": "needs-install", "gh": False, "version": None, "installed_now": False, "auth": None, "git_credential": None}
-    if not shutil.which("gh"):
-        installed, reason = install()
+    if not gh_path():
+        found = installers()
+        if found and not install_now:
+            result["install"] = " ".join(found[0])
+            result["reason"] = "gh is not installed. Run this script again with --install to run: %s" % result["install"]
+            return result
+        installed, reason = install(found)
         if not installed:
             result["reason"] = reason
             return result
@@ -174,18 +198,20 @@ def ensure(login=False, wait=None):
     result["auth"] = "logged-in"
     ok = run(["gh", "auth", "setup-git", "--hostname", HOST], timeout=60) == 0
     result["git_credential"] = "configured" if ok else "failed"
-    result["status"] = "ready"
+    result["status"] = "ready" if ok else "needs-credential"
     if not ok:
-        result["reason"] = "gh auth setup-git failed; git may not have a credential for %s." % HOST
+        result["reason"] = "gh auth setup-git failed, so git has no credential from gh for %s." % HOST
     return result
 
 
 def parse(argv):
-    login, wait, index = False, None, 0
+    login, wait, install_now, index = False, None, False, 0
     while index < len(argv):
         word = argv[index]
         if word == "--login":
             login = True
+        elif word == "--install":
+            install_now = True
         elif word == "--wait" and index + 1 < len(argv):
             index += 1
             try:
@@ -193,14 +219,14 @@ def parse(argv):
             except ValueError:
                 raise SystemExit("gh_setup.py: --wait takes a number of seconds")
         else:
-            raise SystemExit("usage: gh_setup.py [--login] [--wait N]")
+            raise SystemExit("usage: gh_setup.py [--install] [--login] [--wait N]")
         index += 1
-    return login, wait
+    return login, wait, install_now
 
 
 def main(argv):
-    login, wait = parse(argv)
-    result = ensure(login=login, wait=wait)
+    login, wait, install_now = parse(argv)
+    result = ensure(login=login, wait=wait, install_now=install_now)
     sys.stdout.write(TOKEN.sub("[redacted]", json.dumps(result)) + "\n")
     return 0 if result["status"] in ("ready", "awaiting-browser") else 1
 
