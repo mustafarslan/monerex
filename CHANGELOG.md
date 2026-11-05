@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0: monerex ships by itself, and merges only when the owner opts in
 
 - The shell-text merge rules stop at catching the usual spellings: four review rounds showed each new text rule only moves the gap, so SECURITY.md says so: against a mistake `merge.py`'s conditions hold, and against an agent set on getting round them only CI, `--match-head-commit` and branch protection do. After a reported failure, "merged" needs the pull request's head to be the reviewed commit.
 - **monerex ships by itself.** `ship` is no longer manual only: after a review that says
