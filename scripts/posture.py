@@ -62,8 +62,10 @@ def rules(settings, kind):
     return found
 
 
-# What ship runs that must reach the code host, so must be left out of the sandbox.
-CODE_HOST_COMMANDS = ("git push", "git fetch", "gh", "monerex-setup", "monerex-forge", "monerex-merge")
+# What ship runs that must reach the code host, as the command lines it really runs, so an
+# entry is judged by what it lets through: a bare `gh` covers no `gh pr create`.
+CODE_HOST_COMMANDS = ("git push -u origin x", "git fetch origin x", "gh pr create", "monerex-setup --login",
+                      "monerex-forge checks 1", "monerex-merge 1")
 
 
 def covers(entry, command):

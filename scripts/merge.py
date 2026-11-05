@@ -110,10 +110,20 @@ def merge(root, number):
         return 1, {"status": "refused", "reason": str(why)}
     except forge.Failed as error:
         return 2, {"status": "failed", "reason": str(error)}
-    done = forge.gh("pr", "merge", str(number), "--repo", repo, "--merge", "--delete-branch", "--match-head-commit", sha)
-    if done.returncode != 0:
-        return 2, {"status": "failed", "reason": "gh pr merge failed (gh exit %d)." % done.returncode}
-    return 0, {"status": "merged", "reason": "merged %s at %s." % (repo, sha[:12])}
+    try:
+        done = forge.gh("pr", "merge", str(number), "--repo", repo, "--merge", "--delete-branch", "--match-head-commit", sha)
+        failure = None if done.returncode == 0 else "gh exit %d" % done.returncode
+    except forge.Failed as error:  # a timeout among them: GitHub may have merged all the same
+        failure = str(error)
+    if failure is None:
+        return 0, {"status": "merged", "reason": "merged %s at %s." % (repo, sha[:12])}
+    try:
+        after = forge.ask_json("reading the pull request again", "pr", "view", str(number), "--repo", repo, "--json", "state,mergeCommit")
+    except forge.Failed:
+        after = {}
+    if after.get("state") == "MERGED":
+        return 0, {"status": "merged", "reason": "gh pr merge reported a failure (%s), but pull request %d is merged." % (failure, number)}
+    return 2, {"status": "failed", "reason": "gh pr merge failed (%s)." % failure}
 
 
 def main(argv):

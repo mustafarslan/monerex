@@ -1009,8 +1009,23 @@ def setting_refusal(key, value=""):
     return None
 
 
+# Long options of `git config` that act on whole sections or the whole file. git takes an
+# unambiguous prefix of a long option as the option, so `--rename-sec` and `--ed` are these.
+CONFIG_PREFIXED = ("--rename-section", "--remove-section", "--rename", "--edit")
+
+
+def config_option(arg):
+    """`arg` as the full option it abbreviates, when it is a prefix of one of CONFIG_PREFIXED."""
+    if arg.startswith("--") and len(arg) >= 4 and "=" not in arg:
+        for name in CONFIG_PREFIXED:
+            if name.startswith(arg):
+                return name
+    return arg
+
+
 def config_refusal(args):
     """Why this `git config ...` may not run, or None: a write of a setting the guards rest on."""
+    args = [config_option(arg) for arg in args]
     words, mode, skip = [], "write", False
     for arg in args:
         if skip:
@@ -1350,6 +1365,8 @@ def gh_scope(words, plain):
     )
     if command in ("org", "status"):
         return "`gh %s` reports across everything the account belongs to. Name one repository instead." % command
+    if command == "alias" and len(plain) > 1 and plain[1] in ("set", "import"):
+        return "a gh alias can rename any command, `pr merge` among them, and the guard cannot see through it; making one is the owner's to do."
     if command == "search" and not named and not any(word.startswith("--owner") for word in words):
         return "a search with no --owner or --repo reaches across every organisation. Scope it."
     if command == "api":
@@ -1383,6 +1400,27 @@ def is_merge_command(word):
     if os.path.basename(word) != "merge.py":
         return False
     return os.path.realpath(word) == os.path.realpath(MERGE_SCRIPT) or word.endswith("/../../scripts/merge.py") and "$" in word
+
+
+SUBAGENT_MERGE_WORDS = re.compile(r"monerex-merge|merge\.py")
+READ_ONLY_COMMANDS = {"grep", "rg", "cat", "head", "tail", "wc", "ls", "find"}
+
+
+def only_reads(command):
+    """True when every command in the line is one that only reads, so a name in it is text.
+
+    `find -exec` runs a program, so a find that execs does not count.
+    """
+    found = False
+    for words in segments(command):
+        at = command_index(words)
+        if at >= len(words):
+            continue
+        name = os.path.basename(words[at])
+        if name not in READ_ONLY_COMMANDS or (name == "find" and any(w.startswith("-exec") or w.startswith("-ok") for w in words)):
+            return False
+        found = True
+    return found
 
 
 def merge_command_refusal(words, data):
@@ -1446,6 +1484,10 @@ def pre_bash(data, root, config):
     broken = confidential(command, root)
     if broken:
         return deny("this command contains a %s. Nothing was run." % broken[0])
+    if data.get("agent_id") and SUBAGENT_MERGE_WORDS.search(command) and not only_reads(command):
+        # Anywhere in the line, not only where it is the command: `sh bin/monerex-merge 5` or a
+        # relative path after a `cd` run it too. merge.py's own conditions remain the real gate.
+        return deny("only the main session merges, through ship; a subagent never runs monerex-merge. Nothing was run.")
     for words in segments(command):
         reason = assignment_refusal(words) or merge_command_refusal(words, data)
         if reason:

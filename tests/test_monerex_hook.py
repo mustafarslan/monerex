@@ -753,6 +753,20 @@ class HookTest(unittest.TestCase):
         self.assert_denied(self.bash("env monerex-merge 5 --admin"), "monerex-merge <N>")
         self.assert_denied(self.bash("echo hi && monerex-merge 5", subagent=True), "subagent")
 
+    def test_a_subagent_cannot_reach_the_merge_script_by_another_spelling(self):
+        for command in (
+            "sh %s 5" % os.path.join(ROOT, "bin", "monerex-merge"),
+            "cd %s && python3 scripts/merge.py 5" % ROOT,
+            "bash -c 'monerex-merge 5'",
+            "find . -name merge.py -exec python3 {} 5 \\;",
+            "cat scripts/merge.py | python3 - 5",
+        ):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command, subagent=True), "subagent never runs monerex-merge")
+        for command in ("grep -n merge.py README.md", "cat scripts/merge.py", "ls bin/monerex-merge", "rg monerex-merge skills | head -5"):
+            with self.subTest(command):
+                self.assert_allowed(self.bash(command, subagent=True))
+
     def test_the_merge_opt_in_is_never_set_by_an_agent(self):
         for command in (
             "git config monerex.merge after-checks",
@@ -790,6 +804,19 @@ class HookTest(unittest.TestCase):
             with self.subTest(command):
                 self.assert_denied(self.bash(command))
         self.assert_allowed(self.bash("git config --rename-section old new"))
+        # git takes an unambiguous prefix of a long option as the option.
+        for command in ("git config --rename-sec monerex other", "git config --rename-s other monerex",
+                        "git config --ed", "git config --edi", "git config --local --edit"):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command))
+        self.assert_allowed(self.bash("git config --rename-sec old new"))
+
+    def test_a_gh_alias_cannot_be_made_or_imported(self):
+        # An alias can rename `pr merge`; the guard cannot see through it.
+        for command in ("gh alias set pm 'pr merge'", "gh alias import aliases.yml", "gh alias set --shell x 'gh pr merge 1'"):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command), "alias")
+        self.assert_allowed(self.bash("gh alias list"))
 
     def test_a_merge_through_the_api_is_refused(self):
         for command in (

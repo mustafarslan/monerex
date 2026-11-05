@@ -331,8 +331,11 @@ def agent_ran(root, agent_type, slug=None, since=("start",), after=()):
     """Whether that agent was dispatched since the task's latest `since` event (its start, by
     default) and the latest dispatch of any agent in `after`; True when there is no open task."""
     records = read(root)
+    named = slug is not None
     slug = slug or open_task(records)
     starts = [record["at"] for record in records if record.get("event") == "start" and record.get("task") == slug]
+    if named and not starts:
+        return False  # a task named outright that never started has had no agent
     if not slug or not starts:
         return True  # nothing is logged without a task anyway
     anchor = max(record["at"] for record in records if record.get("task") == slug and record.get("event") in since
@@ -568,8 +571,14 @@ def main(argv=None):
         return 0
     if args.name == "start" and not (args.slug and args.tier):
         parser.error("start needs --slug and --tier")
-    if args.name == "ship" and not (args.pr and args.pr > 0):
-        parser.error("ship needs --pr, the pull request's number")
+    if args.name == "ship" and not (args.pr and args.pr > 0 and args.slug):
+        parser.error("ship needs --pr, the pull request's number, and --slug, its task")
+    if args.slug and args.name != "start" and not any(
+        record.get("event") == "start" and record.get("task") == args.slug for record in read(root)
+    ):
+        # A misspelt slug would start a task of its own in the log, one nobody started.
+        print("monerex: no task %s was started in this checkout; nothing logged." % args.slug, file=sys.stderr)
+        return 1
     # A verdict or a review count with nobody behind it is the session grading its own work.
     # Review counts need a reviewer after the latest change, verify or review: bugfix dispatches
     # one long before, to doubt the root cause, and a re-review needs one of its own.

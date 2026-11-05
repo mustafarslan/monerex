@@ -26,6 +26,11 @@
   An agent may not set `monerex.merge` in any form. A T0 is never merged. An earlier draft that
   let the guard pass a `gh pr merge` it had read was removed: reading the command could not
   bind it to a commit.
+- **What could hide a merge is refused.** `gh alias set` and `gh alias import` (an alias can
+  rename `pr merge`); abbreviated `git config` options such as `--rename-sec` and `--ed`, read
+  as their full forms. A task event for a slug that was never started is refused, and
+  `event ship` needs both `--pr` and `--slug`. When `gh pr merge` fails or times out,
+  `monerex-merge` reads the pull request again and reports `merged` if GitHub merged it.
 - **A task starts on a fresh branch.** On the default branch or another task's `monerex/*`
   branch, `start` fetches the base and runs `git switch -c "monerex/<slug>" "origin/<base>"`
   (with no `origin`, from HEAD), and stops first if the tree has changes. A T0 commits there, runs its checks and ships.

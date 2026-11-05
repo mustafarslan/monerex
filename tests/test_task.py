@@ -425,6 +425,18 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_script(TASK, "event", "review", "--slug", "s", *counts).returncode, 0)
         self.assertEqual((self.events()[-1]["event"], self.events()[-1]["task"]), ("review", "s"))
         self.assertEqual(self.run_script(TASK, "event", "ship", "--slug", "s").returncode, 2, "ship needs --pr")
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--pr", "7").returncode, 2, "ship needs --slug")
+
+    def test_an_event_for_a_task_that_was_never_started_is_refused(self):
+        self.run_script(TASK, "event", "start", "--slug", "real", "--tier", "T1")
+        for args in (("review", "--slug", "nosuch", "--merge", "yes"), ("ship", "--pr", "3", "--slug", "nosuch"), ("done", "--slug", "nosuch")):
+            with self.subTest(args):
+                done = self.run_script(TASK, "event", *args)
+                self.assertEqual(done.returncode, 1, done.stderr)
+                self.assertIn("no task nosuch was started", done.stderr)
+        self.assertEqual([record["event"] for record in self.events()], ["start"])
+        # The reviewer check does not wave an unknown task through either.
+        self.assertFalse(task.agent_ran(self.repo, "monerex:reviewer", "nosuch"))
 
     def test_a_reviewer_from_before_the_last_verify_does_not_count(self):
         # Bugfix dispatches a reviewer to doubt the root cause long before its review stage.

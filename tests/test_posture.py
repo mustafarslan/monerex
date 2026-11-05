@@ -81,11 +81,12 @@ class PostureTest(unittest.TestCase):
         self.assertNotIn(name, missing())  # with the sandbox off nothing cuts them off
         for excluded in ([], ["git push:*", "gh:*"], ["git push *", "git fetch *", "gh *", "monerex-setup *"],
                          ["git p*", "git fetch *", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"],
-                         ["git", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"]):
+                         ["git", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"],
+                         ["git *", "gh", "monerex-setup", "monerex-forge:*", "monerex-merge *"]):
             with self.subTest(excluded):
                 self.settings({"sandbox": {"enabled": True, "excludedCommands": excluded}})
                 self.assertIn(name, missing())
-        for excluded in (["git push *", "git fetch *", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"], ["git *", "gh:*", "monerex-setup *", "monerex-forge *", "monerex-merge *"], ["git *", "gh", "monerex-setup", "monerex-forge:*", "monerex-merge *"]):
+        for excluded in (["git push *", "git fetch *", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"], ["git *", "gh:*", "monerex-setup *", "monerex-forge *", "monerex-merge *"], ["git push *", "git fetch *", "gh pr *", "gh *", "monerex-setup:*", "monerex-forge:*", "monerex-merge *"]):
             with self.subTest(excluded):
                 self.settings({"sandbox": {"enabled": True, "excludedCommands": excluded}})
                 self.assertNotIn(name, missing())
