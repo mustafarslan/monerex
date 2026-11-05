@@ -402,6 +402,42 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
         self.assertEqual(self.events()[-1]["event"], "review")
 
+    def test_a_review_records_the_commit_it_reviewed(self):
+        # Ship merges only the commit the review said yes on.
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "x"], cwd=self.repo, env=self.env, check=True)
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, env=self.env, capture_output=True, text=True).stdout.strip()
+        self.run_script(TASK, "event", "start", "--slug", "h", "--tier", "T1")
+        self.dispatch("monerex:reviewer")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", *counts).returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["head"]), ("review", head))
+        self.run_script(TASK, "event", "done")
+        self.assertNotIn("head", self.events()[-1])
+
+    def test_ship_records_the_pull_request_and_a_late_review_finds_its_task(self):
+        # monerex-merge finds a pull request's task through the ship event.
+        self.run_script(TASK, "event", "start", "--slug", "s", "--tier", "T1")
+        self.run_script(TASK, "event", "done")
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--pr", "7", "--slug", "s").returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["pr"], self.events()[-1]["task"]), ("ship", 7, "s"))
+        self.dispatch("monerex:reviewer")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", "--slug", "s", *counts).returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["task"]), ("review", "s"))
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--slug", "s").returncode, 2, "ship needs --pr")
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--pr", "7").returncode, 2, "ship needs --slug")
+
+    def test_an_event_for_a_task_that_was_never_started_is_refused(self):
+        self.run_script(TASK, "event", "start", "--slug", "real", "--tier", "T1")
+        for args in (("review", "--slug", "nosuch", "--merge", "yes"), ("ship", "--pr", "3", "--slug", "nosuch"), ("done", "--slug", "nosuch")):
+            with self.subTest(args):
+                done = self.run_script(TASK, "event", *args)
+                self.assertEqual(done.returncode, 1, done.stderr)
+                self.assertIn("no task nosuch was started", done.stderr)
+        self.assertEqual([record["event"] for record in self.events()], ["start"])
+        # The reviewer check does not wave an unknown task through either.
+        self.assertFalse(task.agent_ran(self.repo, "monerex:reviewer", "nosuch"))
+
     def test_a_reviewer_from_before_the_last_verify_does_not_count(self):
         # Bugfix dispatches a reviewer to doubt the root cause long before its review stage.
         import time

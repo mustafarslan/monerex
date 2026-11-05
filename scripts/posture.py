@@ -62,6 +62,38 @@ def rules(settings, kind):
     return found
 
 
+# What ship runs that must reach the code host, as the command lines it really runs, so an
+# entry is judged by what it lets through: a bare `gh` covers no `gh pr create`.
+CODE_HOST_COMMANDS = ("git push -u origin x", "git fetch origin x", "gh pr create", "monerex-setup --login",
+                      "monerex-forge checks 1", "monerex-merge 1")
+
+
+def covers(entry, command):
+    """Whether an `excludedCommands` entry covers a command. With a trailing ` *` or `:*`, what
+    is left must be the command or a whole-word prefix of it, so `git *` covers `git push`; an
+    entry with no wildcard covers only that exact command."""
+    entry = entry.strip()
+    for tail in (" *", ":*"):
+        if entry.endswith(tail):
+            stem = entry[: -len(tail)].strip()
+            return bool(stem) and (command == stem or command.startswith(stem + " "))
+    return command == entry
+
+
+def reaches_code_host(settings):
+    """Whether ship's push, fetch, gh and monerex launcher calls get past the sandbox: it is
+    off, or the `excludedCommands` of all the settings files together leave every one out."""
+    if first(settings, "sandbox", "enabled") is not True:
+        return True
+    entries = []
+    for _, data in settings:
+        sandbox = data.get("sandbox") if isinstance(data, dict) else None
+        excluded = sandbox.get("excludedCommands") if isinstance(sandbox, dict) else None
+        if isinstance(excluded, list):
+            entries.extend(entry for entry in excluded if isinstance(entry, str))
+    return all(any(covers(entry, command) for entry in entries) for command in CODE_HOST_COMMANDS)
+
+
 def assess(root):
     settings = gather(root)
     domains = first(settings, "sandbox", "network", "allowedDomains")
@@ -73,6 +105,7 @@ def assess(root):
         ("no network host is approved in advance", domains is not None and len(domains) == 0),
         ("a push always asks", any(rule.startswith("Bash(git push") for rule in ask)),
         ("secrets files cannot be read", any(rule.startswith("Read(") and ".env" in rule for rule in deny)),
+        ("pushes and gh can reach the code host", reaches_code_host(settings)),
     ]
     return {
         "sandbox": first(settings, "sandbox", "enabled") is True,

@@ -14,7 +14,7 @@ model and effort, and the rules that must hold, such as "no push to the default 
 monerex is for Claude Code only. It runs Python 3 scripts and ships a `bin/` folder, so
 claude.ai and Cowork do not install it.
 
-**Status: early, 0.3.0;** what changed in each release is in the [changelog](CHANGELOG.md). The whole loop and the pull-request stages have run for real on
+**Status: early, 0.4.0;** what changed in each release is in the [changelog](CHANGELOG.md). The whole loop and the pull-request stages have run for real on
 this project, and the guards have been through several review rounds. Treat it as a careful
 first release, not a finished product.
 
@@ -43,7 +43,7 @@ You type the commands marked *typed*; the others run when the stage before them 
 | **build** | after your yes | One `implementer` agent makes the change test-first and runs the checks; the change is committed and taken out once more to prove its tests fail without it | — |
 | **verify** | after `build` | A fresh agent runs the checks itself and compares the diff with the plan | — |
 | **review** | after `verify`, or typed: `/monerex:review [PR]` | Fault-finding review in a fresh context, cost that grows with the input included: one reviewer, up to four with separate angles for a feature or a risk flag (five when the diff touches a query, a remote call or a loop over outside data), and, on a risk-flagged change, a second model family when you have one set up. Every finding is checked against the code before it is reported | which findings to act on |
-| **ship** | typed: `/monerex:ship` | Pushes the branch, writes the pull request text, opens the pull request, watches its checks | **the text**; **the merge** is always yours |
+| **ship** | after `review` says yes (or a T0's checks), when `origin` names a GitHub repository, or typed: `/monerex:ship` | Installs `gh` and starts its login if needed, writes the pull request text, then pushes the branch, opens the pull request and watches its checks | **the text**; **the merge** is yours unless you ran `git config monerex.merge after-checks` |
 | **feedback** | typed: `/monerex:feedback [PR]` | Treats each review comment on your pull request as a claim, checks it, fixes what holds, and drafts a reply for every thread | what to fix, and **every reply** |
 | **bugfix** | typed: `/monerex:bugfix <issue>` | A test that fails for the reported symptom, the fix, proof that the test fails again without it, then verify, review, the pull request (draft if you say so) and one round of answers to its review comments; the test is locked for the rest of the task | the plan, **the pull request text** and **every reply** |
 | **retro** | typed: `/monerex:retro` | Reads the task and routing logs and proposes a handful of changes to the way of working, each tied to a number, and says whether the changes you accepted earlier moved their numbers | each change |
@@ -190,12 +190,25 @@ no server, sends nothing to its author, and collects no telemetry.
 - **The code host.** The pull-request stages call the GitHub CLI (`gh`, through
   `bin/monerex-forge`) for the one repository you name: they read pull requests, issues,
   review threads and checks, your login (to tell your pull requests from others'), and
-  `start` counts your open pull requests on larger tasks. `ship`, `feedback` and `bugfix`,
-  which run only when you type them, push your branch (never by force) and may re-run a
+  `start` counts your open pull requests on larger tasks. `ship` (which `start` runs after
+  review), `feedback` and `bugfix` push your branch (never by force) and may re-run a
   failed check; creating a pull request and posting a review, a reply or a comment happen
   only after you approve the exact text, which is first scanned for secrets, hidden characters
   and your private terms, and `feedback` marks the review threads it fixed
-  as resolved. monerex never merges.
+  as resolved. monerex merges only after you ran `git config monerex.merge after-checks` in
+  your own checkout (a setting in your local git config, not in the committed repository; a
+  worktree cannot supply it). Then `ship` runs `monerex-merge <N>`, the only merge path (the
+  guard refuses every `gh pr merge`). It checks for itself that the pull request is open, on
+  the `origin` repository and not from a fork, goes to the default branch, that its head is the
+  commit the checks passed on and the task's review said yes on, and that CI is green, then
+  merges with `--match-head-commit` so nothing newer is merged. A change after the review needs
+  a new one. A T0 task has no review and is never merged by monerex. These checks read files a
+  shell command could rewrite; branch protection on GitHub is the stop that does not.
+- **Installing `gh`.** When `gh` is missing, `ship` runs `monerex-setup --install` (a command
+  of its own, so you see it), which installs it with a package manager already on the machine (`brew`, `winget`, `apt-get` when `sudo` needs no password, or `conda`);
+  nothing is downloaded and run. When `gh` is not signed in, it starts `gh auth login --web`
+  and shows you the one-time code and the address to enter it; then it runs
+  `gh auth setup-git` so git pushes with that sign-in. It never prints a token or `gh`'s output.
 - **Files it writes in the repository.** Intents, plans and retro notes under
   `docs/work/<task>/`, and the retro proposals you accepted in `.monerex/proposals.jsonl`,
   meant to be committed; scratch files under `.monerex/tmp/` and worktrees under
@@ -229,7 +242,7 @@ no server, sends nothing to its author, and collects no telemetry.
   sessions with `claude agents --json` and `ps`; only counts are printed, never session
   names or folders. `dispatch` starts a session with `claude --bg` after your yes.
 - **Settings.** `/monerex:start` reads the repository's and your user settings files to see
-  whether a sandbox is on. It writes no settings file: if one is missing, it shows you the
+  whether a sandbox is on, and whether it lets a push and `gh` through. It writes no settings file: if one is missing, it shows you the
   profile to apply yourself, with `/sandbox` or by pasting it. It lists the gaps in full the
   first time and when they change, and remembers which it showed in one small file per
   checkout under `~/.local/state/monerex/posture/` (or `$XDG_STATE_HOME`): a fingerprint of
@@ -269,6 +282,11 @@ has the threat model, what each guard covers and does not, and a sandbox profile
   may be open before `start` and `dispatch` ask; 2 by default;
 - `models`: which Claude model each tier (`small`, `mid`, `large`) and the `advisor` mean;
   see `routing/routing.json`.
+
+Merging is not set here: a committed file would let anyone who can change the repository
+turn it on. `git config monerex.merge after-checks`, run in your own checkout, lets `ship`
+merge a pull request once its checks are green and the review said yes on that commit, and
+only when `checks` lists at least one command. `git config --unset monerex.merge` turns it off.
 
 [Optional capabilities](capabilities.md) lists what else monerex uses when it is installed.
 

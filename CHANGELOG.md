@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.4.0: monerex ships by itself, and merges only when the owner opts in
+
+- The shell-text merge rules stop at catching the usual spellings: four review rounds showed each new text rule only moves the gap, so SECURITY.md says so: against a mistake `merge.py`'s conditions hold, and against an agent set on getting round them only CI, `--match-head-commit` and branch protection do. After a reported failure, "merged" needs the pull request's head to be the reviewed commit.
+- **monerex ships by itself.** `ship` is no longer manual only: after a review that says
+  `--merge yes`, or a T0's checks, `start` goes on into it when `origin` names a GitHub
+  repository. It asks you for one thing, the pull request's text (G2), then pushes, opens the
+  pull request and watches its checks. A review that says `after-fixes` sends the fixes round
+  again; `no` stops.
+- **`gh` is set up first.** `bin/monerex-setup` runs `scripts/gh_setup.py`. With `--install`
+  it installs a missing `gh` with a package manager already on the machine (`brew`, `winget`,
+  `apt-get` when `sudo` needs no password, `conda`), never by downloading and running an
+  installer; without it, it names the command it would run. Signed out, it starts the browser
+  login and shows the one-time code; signed in, it runs `gh auth setup-git`, and ship stops if
+  that fails. It never prints a token or `gh`'s output. The probe's `code_host` now says `gh`
+  and `gh_auth`.
+- **Merging is the owner's opt-in, through one path.** The guard refuses every `gh pr merge`
+  and every API merge, by REST path or by GraphQL mutation name. `monerex-merge <N>`
+  (`scripts/merge.py`) is the only merge path, run by ship from the main session with the
+  pull request's number and nothing else. It merges only when the owner ran
+  `git config monerex.merge after-checks` in their own checkout, `checks` is listed, the pull
+  request is open, on `origin`, not from a fork and aimed at the default branch, its head is
+  the commit the checks passed on and the task's latest review said `--merge yes` on, and CI
+  is green; then `gh pr merge --match-head-commit`. `task.py event review` records the commit
+  as `head`, and `task.py event ship --pr <N> --slug <slug>` ties the pull request to its task.
+  An agent may not set `monerex.merge` in any form. A T0 is never merged. An earlier draft that
+  let the guard pass a `gh pr merge` it had read was removed: reading the command could not
+  bind it to a commit.
+- **What could hide a merge is refused.** `gh alias set` and `gh alias import` (an alias can
+  rename `pr merge`); abbreviated `git config` options such as `--rename-sec` and `--ed`, read
+  as their full forms. A task event for a slug that was never started is refused, and
+  `event ship` needs both `--pr` and `--slug`. When `gh pr merge` fails or times out,
+  `monerex-merge` reads the pull request again and reports `merged` if GitHub merged it.
+- **A task starts on a fresh branch.** On the default branch or another task's `monerex/*`
+  branch, `start` fetches the base and runs `git switch -c "monerex/<slug>" "origin/<base>"`
+  (with no `origin`, from HEAD), and stops first if the tree has changes. A T0 commits there, runs its checks and ships.
+- **The guard's refusals speak to the agent.** A push refused for missing or stale checks says
+  to run `scripts/check.py` and retry; nothing is needed from you. The checks gate and the
+  "moves a branch" refusal each have a phrase of their own.
+- **Eval graders follow the new wording.** `incident-push-without-checks` and
+  `incident-push-with-redirect` match the checks gate's own phrase. Their baselines in
+  `evals/baselines.json` need re-recording.
+- **A seventh posture check.** With the sandbox on, the `excludedCommands` of all the
+  settings files together must cover `git push`, `git fetch`, `gh`, `monerex-setup`,
+  `monerex-forge` and `monerex-merge`, or ship cannot reach the code host. The profile in
+  SECURITY.md lists the three launchers.
+
 ## 0.3.0: the measured loop, the advisor, and the directory listing
 
 - **The advisor has a model and a way to be asked.** `models.advisor` is `fable` (it was

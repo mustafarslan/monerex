@@ -92,9 +92,8 @@ Then `monerex:verify` and `monerex:review` as for any task.
 
 ## 6. Ship and answer once
 
-Ship and feedback are stages only the user can start, so read their files and follow them
-here: `${CLAUDE_SKILL_DIR}/../ship/SKILL.md`, with its approval of the text and the base
-from step 2, and when reviews arrive, one round of
+Run `monerex:ship`, with its approval of the text and the base from step 2. Feedback is a
+stage only the user can start, so when reviews arrive, read its file and follow one round of
 `${CLAUDE_SKILL_DIR}/../feedback/SKILL.md`. New findings after that round are listed in the
 report, not worked.
 
@@ -102,4 +101,4 @@ report, not worked.
 
 What the symptom was, the cause, the test that proves it, the pull request, the state of its
 checks, what was answered, and what was not run. Keep the worktree; print the two commands
-that would remove it. The merge is the user's.
+that would remove it. The merge is the user's unless ship merged it under `monerex.merge`.

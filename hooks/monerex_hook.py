@@ -952,12 +952,13 @@ def moved_before(root, config, heads):
     if config.get("checks") and root in heads.get(MOVED, ()):
         return (
             "an earlier command in this line moves a branch, so the checks have not run on what "
-            "this pushes. Run the checks, then push in a command of its own."
+            "this pushes. Run `python3 %s/scripts/check.py` yourself, then retry the push in a "
+            "command of its own; nothing is needed from the user." % PLUGIN_ROOT
         )
     return None
 
 
-def checks_gate(root, config, commits=None):
+def checks_gate(root, config, commits=None, retry="the push"):
     if not config.get("checks"):
         return None
     import check
@@ -965,7 +966,11 @@ def checks_gate(root, config, commits=None):
     ok, message = check.status(root, commits)
     if ok:
         return None
-    return "%s. Run the checks first: python3 %s/scripts/check.py" % (message, PLUGIN_ROOT)
+    return (
+        "%s; the checks gate needs a passing run on this commit. Run `python3 %s/scripts/check.py` "
+        "yourself, then retry %s in a command of its own; nothing is needed from the user."
+        % (message, PLUGIN_ROOT, retry)
+    )
 
 
 # The setting with which the owner lets one push reach the default branch past the
@@ -974,14 +979,18 @@ OWNER_OVERRIDE = "monerex.allowdefaultpush"
 INCLUDE_REASON = "a config include may carry any setting, the ones that turn the guards off too; adding one is the owner's to do."
 # Settings an agent may not give or write, matched in a key or anywhere in a value, since a
 # value can carry one: an alias body runs `git -c <key>=...` of its own.
+# The owner's opt-in to merging, which monerex-merge reads from the owner checkout's own git
+# config. The owner sets it; an agent may not, in any form.
+MERGE_SETTING = "monerex.merge"
 GUARD_SETTINGS = (
     (OWNER_OVERRIDE, "the owner's override of the default-branch rule is not for agents."),
     ("core.hookspath", "git's hooks may not be redirected."),
     ("include.path", INCLUDE_REASON),
     ("includeif.", INCLUDE_REASON),
+    (MERGE_SETTING, "the owner's opt-in to merging is theirs to set: `git config monerex.merge after-checks`, run by them."),
 )
 # Settings that only restore git's default when they are removed.
-SAFE_TO_UNSET = (OWNER_OVERRIDE, "core.hookspath")
+SAFE_TO_UNSET = (OWNER_OVERRIDE, "core.hookspath", MERGE_SETTING)
 CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "-l", "--list"}
 CONFIG_WRITES = {"--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section", "-e", "--edit"}
 CONFIG_VALUES = {"-f", "--file", "--blob", "--type", "--default", "--comment"}
@@ -1000,8 +1009,23 @@ def setting_refusal(key, value=""):
     return None
 
 
+# Long options of `git config` that act on whole sections or the whole file. git takes an
+# unambiguous prefix of a long option as the option, so `--rename-sec` and `--ed` are these.
+CONFIG_PREFIXED = ("--rename-section", "--remove-section", "--rename", "--edit")
+
+
+def config_option(arg):
+    """`arg` as the full option it abbreviates, when it is a prefix of one of CONFIG_PREFIXED."""
+    if arg.startswith("--") and len(arg) >= 4 and "=" not in arg:
+        for name in CONFIG_PREFIXED:
+            if name.startswith(arg):
+                return name
+    return arg
+
+
 def config_refusal(args):
     """Why this `git config ...` may not run, or None: a write of a setting the guards rest on."""
+    args = [config_option(arg) for arg in args]
     words, mode, skip = [], "write", False
     for arg in args:
         if skip:
@@ -1014,18 +1038,21 @@ def config_refusal(args):
             mode = "unset"
         elif not arg.startswith("-"):
             words.append(arg)
+    if words[:1] == ["edit"] or any(arg in ("-e", "--edit") for arg in args):
+        # An editor on the whole file can write any setting, monerex's own among them.
+        return "editing git's config file in an editor can change monerex's own settings; that is the owner's to do."
     if words[:1] in (["get"], ["list"]):
         mode = "read"
-    elif words[:1] in (["set"], ["unset"], ["edit"], ["rename-section"], ["remove-section"]):
+    elif words[:1] in (["set"], ["unset"], ["rename-section"], ["remove-section"]):
         mode = {"unset": "unset", "rename-section": "section", "remove-section": "section"}.get(words[0], "write")
         words = words[1:]
-    if any(arg in ("--rename-section", "--remove-section") for arg in args):
+    if any(arg in ("--rename-section", "--remove-section", "--rename") for arg in args):
         mode = "section"
     if mode == "section":
-        # The whole section goes, or moves: `monerex`, `core` with its hooks path, an include.
-        section = words[0].lower() if words else ""
-        if section == "monerex" or section.startswith("monerex."):
-            return "monerex's own settings are the owner's to change."
+        # The whole section goes, or moves, from or to `monerex`: the guards' own settings.
+        for section in (word.lower() for word in words[:2]):
+            if section == "monerex" or section.startswith("monerex."):
+                return "monerex's own settings are the owner's to change."
         return None
     if not words or mode == "read" or (len(words) < 2 and mode == "write" and not set(args) & CONFIG_WRITES):
         return None
@@ -1338,6 +1365,8 @@ def gh_scope(words, plain):
     )
     if command in ("org", "status"):
         return "`gh %s` reports across everything the account belongs to. Name one repository instead." % command
+    if command == "alias" and len(plain) > 1 and plain[1] in ("set", "import"):
+        return "a gh alias can rename any command, `pr merge` among them, and the guard cannot see through it; making one is the owner's to do."
     if command == "search" and not named and not any(word.startswith("--owner") for word in words):
         return "a search with no --owner or --repo reaches across every organisation. Scope it."
     if command == "api":
@@ -1351,6 +1380,50 @@ def gh_scope(words, plain):
             return "that query lists the account's organisations. Ask for one repository."
     if command in GH_NEEDS_REPO and not named:
         return Ask("this `gh %s` command does not name its repository. Add --repo owner/name." % command)
+    return None
+
+
+MERGE_REASON = (
+    "merging goes through monerex-merge; otherwise merging is the user's decision. "
+    "`monerex-merge <N>` checks the owner's opt-in, the checks, the review and CI itself."
+)
+# GraphQL mutations that merge, or queue a merge, refused in any `gh api` call.
+MERGE_MUTATIONS = ("mergepullrequest", "enablepullrequestautomerge", "mergebranch")
+API_MERGE = re.compile(r"(?:^|/)(?:pulls/[^/?#\s]+/merge|merges)/?(?:[?#]|$)")
+MERGE_SCRIPT = os.path.join(PLUGIN_ROOT, "scripts", "merge.py")
+
+
+def is_merge_command(word):
+    """`monerex-merge`, or the script it runs: by the plugin's path or a stage's `${CLAUDE_SKILL_DIR}` one."""
+    if os.path.basename(word) == "monerex-merge":
+        return True
+    if os.path.basename(word) != "merge.py":
+        return False
+    return os.path.realpath(word) == os.path.realpath(MERGE_SCRIPT) or word.endswith("/../../scripts/merge.py") and "$" in word
+
+
+def merge_command_refusal(words, data):
+    """Why this run of monerex-merge may not go, or None: the main session, one number, nothing else.
+
+    Only where it is the command, or the script python runs; a word given to `grep` is text.
+    """
+    at = command_index(words)
+    if at >= len(words):
+        return None
+    index = at
+    if os.path.basename(words[at]).startswith("python"):
+        index = at + 1
+        while index < len(words) and words[index].startswith("-"):
+            index += 1
+        if index >= len(words):
+            return None
+    if not is_merge_command(words[index]):
+        return None
+    if data.get("agent_id"):
+        return "only the main session merges, through ship; a subagent never runs monerex-merge."
+    rest = without_redirections(words[index + 1:])
+    if len(rest) != 1 or not re.fullmatch(r"[1-9][0-9]*", rest[0]):
+        return "run it as `monerex-merge <N>`, the pull request's number and nothing else."
     return None
 
 
@@ -1368,9 +1441,11 @@ def gh_rules(words, data, root, config, heads=None):
             plain.append(word)
     pairs = list(zip(plain, plain[1:]))
     if ("pr", "merge") in pairs:
-        return "merging is the user's decision; monerex never merges."
-    if "api" in plain and any(word.rstrip("/").endswith("/merge") for word in plain):
-        return "merging is the user's decision; monerex never merges."
+        return MERGE_REASON
+    if "api" in plain:
+        line = " ".join(words).lower()
+        if any(API_MERGE.search(word) for word in words) or any(name in line for name in MERGE_MUTATIONS):
+            return MERGE_REASON + " A merge through the API is never run."
     if ("pr", "create") in pairs:
         if data.get("agent_id"):
             return "only the main session opens a PR, inside ship."
@@ -1389,7 +1464,7 @@ def pre_bash(data, root, config):
     if broken:
         return deny("this command contains a %s. Nothing was run." % broken[0])
     for words in segments(command):
-        reason = assignment_refusal(words)
+        reason = assignment_refusal(words) or merge_command_refusal(words, data)
         if reason:
             return deny(reason + " Nothing was run.")
     reason = hook_file_refusal(command, root, data.get("cwd") or root)

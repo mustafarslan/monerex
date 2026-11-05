@@ -94,16 +94,17 @@ no longer there.
 - **Architecture (measured)** — what `oxn.md` measured in this review, as it is; its numbers are
   the tool's, never restated. When it did not run, its reason goes under *Not run*.
 - **Not run** — any reviewer or check that was skipped, and why.
-- **Merge?** — your recommendation. The decision is the user's.
+- **Merge?** — your recommendation. On `yes`, ship merges by itself when the owner has opted
+  in with `git config monerex.merge after-checks`; otherwise the decision is the user's.
 
 When the review closes a monerex task, log the counts, which `task.py` refuses unless a
 `monerex:reviewer` ran since the latest implementer, verify or review in this task, and the end
-of the task:
+of the task. `<slug>` is the task's, so a review after `done` still lands in it:
 
 ```sh
-python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event review --confirmed <n> --plausible <n> --rejected <n> --merge <yes|after-fixes|no>
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event review --slug "<slug>" --confirmed <n> --plausible <n> --rejected <n> --merge <yes|after-fixes|no>
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event done
 ```
 
-Do not fix anything in this stage. Do not post anything. If the user wants the findings
-posted to a PR, that text is theirs to approve first.
+Do not fix anything in this stage. Nothing is posted from review: ship posts the pull request
+after the user approves its text, and findings go to a PR only as text the user approved first.

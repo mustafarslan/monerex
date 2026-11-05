@@ -7,7 +7,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(ROOT, "skills")
 KNOWN = {"name", "description", "argument-hint", "user-invocable", "disable-model-invocation"}
-MANUAL_ONLY = {"ship", "bugfix", "feedback", "dispatch", "init"}  # they push, post, start sessions or opt a repository in
+MANUAL_ONLY = {"bugfix", "feedback", "dispatch", "init"}  # they post, start sessions or opt a repository in
 INTERNAL = {"route", "plan", "build", "verify", "intent"}  # reached through start
 
 
@@ -78,6 +78,32 @@ class SkillTest(unittest.TestCase):
         self.assertIn("the base from step 2", flat, "the pull request must go to the base the work started from")
         self.assertIn("`.monerex/state/protected-paths` in the worktree", flat, "say which state file takes the entry")
         self.assertIn("Do not write the file another way", flat)
+
+    def test_ship_sets_up_gh_first_and_start_continues_into_it(self):
+        ship = " ".join(self.skills["ship"][1].split())
+        self.assertIn("monerex-setup --login", ship)
+        self.assertIn("monerex-setup --install --login", ship)
+        self.assertLess(ship.index("monerex-setup"), ship.index("check.py"), "gh is set up before anything that needs it")
+        self.assertIn("git config monerex.merge after-checks", ship)
+        self.assertIn("monerex-merge <N>", ship)
+        self.assertIn('event ship --pr <N> --slug "<slug>"', ship)
+        self.assertIn('event review --slug "<slug>"', " ".join(self.skills["review"][1].split()))
+        start = " ".join(self.skills["start"][1].split())
+        self.assertIn("`monerex:ship`", start)
+        self.assertIn("`code_host.repo`", start)
+        self.assertIn("`--merge yes`", start)
+        self.assertIn('git switch -c "monerex/<slug>" "origin/<base>"', start)
+        self.assertIn('without `origin`, `git switch -c "monerex/<slug>"`', start)
+        # T0 has no review, and ships too: edit, commit on its branch, checks, then ship.
+        t0 = start[start.index("**T0** —"):start.index("**T1** —")]
+        self.assertLess(t0.index("commit"), t0.index("check.py"))
+        self.assertIn("`monerex:ship`", t0)
+
+    def test_no_stage_merges_except_through_monerex_merge(self):
+        for name, (_, body) in self.skills.items():
+            with self.subTest(name):
+                self.assertNotIn("gh pr merge", body)
+                self.assertNotIn("--match-head-commit", body)
 
     def test_retro_writes_its_file_even_when_it_proposes_nothing(self):
         # Seen in a live run: with a thin record the session showed the numbers in its answer
