@@ -17,18 +17,19 @@ and `researcher` starts without your instruction files or memory in its context.
 Private data, untrusted text and an outbound channel are dangerous in one context. Monerex
 narrows what untrusted text reaches the main session, but what actually breaks the chain is
 that **every outbound action has a human gate in front of it**: you approve outward text, and
-you merge. Controls are structural — tools, sandbox, hooks, gates. None relies on a model
+you merge, unless you set `"merge": "after-checks"` in `.monerex/config.json`. Controls are structural — tools, sandbox, hooks, gates. None relies on a model
 noticing an attack. [The evidence](docs/evidence.md#security) is why.
 
 ## What monerex cannot do
 
 A plugin ships skills, agents, hooks and workflows. It **cannot** ship sandbox or permission
 settings. Installing monerex does not turn a sandbox on. Monerex documents the profile below,
-and `/monerex:start` checks six of its settings (sandbox on, unsandboxed retry off, fail when
+and `/monerex:start` checks seven of its settings (sandbox on, unsandboxed retry off, fail when
 the sandbox cannot start, no host approved in advance, a push always asks, secrets files
-cannot be read) in the repository's and your user settings files. It does not see the rest
-of the profile (`excludedCommands`, the credential and `gh` rules) or settings passed with
-`--settings`, so "in place" means those six. When gaps remain, monerex warns, shows the
+cannot be read, and, with the sandbox on, `git push` and `gh` in `excludedCommands` so ship
+can reach the code host) in the repository's and your user settings files. It does not see
+the rest of the profile (the other `excludedCommands`, the credential and `gh` rules) or
+settings passed with `--settings`, so "in place" means those seven. When gaps remain, monerex warns, shows the
 profile for you to apply with `/sandbox` or by pasting it, explains the alternatives, and
 carries on. It never writes a settings file and never blocks on a missing sandbox. It lists
 the gaps in full the first time and when they change, and in one line otherwise; which list
@@ -47,7 +48,7 @@ deletes it.
 | **Confidential names reaching a repo** | Private denylist scanned by git's own hooks on commit and push. | **built** |
 | **Code leaving the machine** to a second reviewer or a web tool | Per-repo policy `external_review: off / diff-only / on`, default off. The only agent with web tools cannot read the repository; a web request carrying a denylisted term or a secret is refused. | **built**: the brief is scanned before it leaves; under `diff-only` the second reviewer starts in a scratch folder holding only the brief, a starting point rather than a wall, and under `on` it starts in the repository |
 | **An agent that reads the web** — untrusted pages and an outbound channel in one context | `researcher` has web search and fetch and nothing else: no file tools, no shell, and no instruction files or memory in its context. What it knows is its brief. Its report is untrusted text; `consult` re-checks the claims a decision rests on in a second run before they are used. | **built**, checked live |
-| **Destructive actions** | Shell guard: no force-push, no push to the default branch, no `--no-verify`, no merging a pull request. The pre-push hook refuses a push to the default branch from the refs git really pushes, in a clone where it is installed and left in place; one command removes it, so it stops accidents, not an agent set on getting round it. Branch protection on the remote is the only stop that is not on this machine; GitHub offers it for a private repository only on a paid plan. | guard and pre-push rule **built** |
+| **Destructive actions** | Shell guard: no force-push, no push to the default branch, no `--no-verify`, no merging a pull request unless the repository sets `"merge": "after-checks"`, and then only from the main session, without `--admin` or `--auto`, with `checks` listed and passed on the commit. The pre-push hook refuses a push to the default branch from the refs git really pushes, in a clone where it is installed and left in place; one command removes it, so it stops accidents, not an agent set on getting round it. Branch protection on the remote is the only stop that is not on this machine; GitHub offers it for a private repository only on a paid plan. | guard and pre-push rule **built** |
 | **Agent rewriting its own guards** | Edits to `.claude/`, `.mcp.json`, instruction files, `.git/`, hook scripts, CI workflows (`.github/`, `.gitlab-ci.yml`), editor settings (`.vscode/`), `.monerex/config.json` and `.monerex/state/`: denied for subagents, asked for the main session. Paths are resolved through symlinks. | **built**, checked live |
 | **Supply chain** | Lockfiles are closed unless the plan lists them; hooks are standard-library Python with no network. A new or upgraded dependency is a risk flag that needs your explicit yes, and optional capabilities are a named list (`capabilities.md`), not whatever is installed. | lockfile guard **built** |
 | **Insecure generated code** | Threat note in the plan for risk-flagged work; security dimension in review; deterministic scanners where the repo has them. Model review supplements them and is never the gate. | threat note and review **built**; scanners planned |
@@ -93,7 +94,10 @@ request, in a repository that has opted in with a `.monerex/config.json`. Withou
   change back that way, with a fresh time. So a command that puts an uncommitted edit of a
   protected file back to the committed version is not reported either.
 - **Shell:** no force-push, no push to the default branch (including `--all` and `--mirror`),
-  no skipped or redirected hooks, no merge. A subagent cannot push or open a PR. When the
+  no skipped or redirected hooks, no merge unless `.monerex/config.json` sets `"merge":
+  "after-checks"`: then `gh pr merge` runs from the main session only, never with `--admin`
+  or `--auto`, only when `checks` lists at least one command, and only with the checks passed on HEAD; a merge through `gh api` stays
+  refused. A subagent cannot push, open a PR or merge. When the
   repository lists `checks`, a push or PR needs a record from `scripts/check.py` showing they
   passed on exactly the commit being pushed, with nothing uncommitted in the tree. A push that
   does not contain the newest commits of the default branch, as last fetched, is asked about:
@@ -410,6 +414,12 @@ alternatives are a dev container, a virtual machine, or a cloud session.
   short line; `init` refuses a linked `.monerex` or `.gitignore`. The stage records guard
   against forgetting a stage, not against forging one: `.monerex/log/` is not a protected
   path, and a shell command can append to it.
+- **Ship installs and signs in to `gh`.** `scripts/gh_setup.py` installs a missing `gh` only
+  with a package manager already present (`brew`, `winget`, `apt-get` when `sudo -n` needs no
+  password, `conda`); it never downloads and runs an installer. Signed out, it starts
+  `gh auth login --web` and prints only the one-time code and the address; signed in, it runs
+  `gh auth setup-git`. It never prints a token or `gh`'s own output. Inside the sandbox an
+  install needs the network: run it outside, or install `gh` yourself.
 - **A plan or intent file starts a task.** Writing `docs/work/<task>/plan.md` or `intent.md`
   logs the task's start, with the session that wrote it.
 

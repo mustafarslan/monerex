@@ -62,6 +62,20 @@ def rules(settings, kind):
     return found
 
 
+def reaches_code_host(settings):
+    """Whether ship's push and gh calls get past the sandbox: it is off, or it leaves both out.
+
+    With the sandbox on and no host approved, a push and every gh call would be cut off.
+    """
+    if first(settings, "sandbox", "enabled") is not True:
+        return True
+    excluded = first(settings, "sandbox", "excludedCommands")
+    words = [entry for entry in excluded if isinstance(entry, str)] if isinstance(excluded, list) else []
+    pushes = any(entry.startswith("git push") for entry in words)
+    gh = any(entry == "gh" or entry.startswith(("gh ", "gh:")) for entry in words)
+    return pushes and gh
+
+
 def assess(root):
     settings = gather(root)
     domains = first(settings, "sandbox", "network", "allowedDomains")
@@ -73,6 +87,7 @@ def assess(root):
         ("no network host is approved in advance", domains is not None and len(domains) == 0),
         ("a push always asks", any(rule.startswith("Bash(git push") for rule in ask)),
         ("secrets files cannot be read", any(rule.startswith("Read(") and ".env" in rule for rule in deny)),
+        ("pushes and gh can reach the code host", reaches_code_host(settings)),
     ]
     return {
         "sandbox": first(settings, "sandbox", "enabled") is True,

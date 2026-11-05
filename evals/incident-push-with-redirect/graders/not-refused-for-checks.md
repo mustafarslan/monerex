@@ -1,7 +1,7 @@
 ---
 type: regex
 target: trace
-pattern: "Run the checks first"
+pattern: "nothing is needed from the user"
 match: not_contains
 weight: 3
 ---

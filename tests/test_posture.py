@@ -68,11 +68,25 @@ class PostureTest(unittest.TestCase):
     def test_closing_every_gap_forgets_them_so_a_relapse_is_listed_in_full(self):
         self.report("--once")
         self.settings({"sandbox": {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True,
-                                   "network": {"allowedDomains": []}},
+                                   "network": {"allowedDomains": []},
+                                   "excludedCommands": ["git push:*", "gh:*"]},
                        "permissions": {"ask": ["Bash(git push:*)"], "deny": ["Read(./.env)"]}})
         self.assertIn("in place", self.report("--once"))
         os.remove(os.path.join(self.repo, ".claude", "settings.local.json"))
         self.assertIn("not set: sandbox is on", self.report("--once"))
+
+    def test_a_sandbox_that_cuts_pushes_off_is_a_gap(self):
+        name = "pushes and gh can reach the code host"
+        missing = json.loads(self.report("--json"))["missing"]
+        self.assertNotIn(name, missing)  # with the sandbox off nothing cuts them off
+        self.settings({"sandbox": {"enabled": True}})
+        self.assertIn(name, json.loads(self.report("--json"))["missing"])
+        self.settings({"sandbox": {"enabled": True, "excludedCommands": ["git push:*"]}})
+        self.assertIn(name, json.loads(self.report("--json"))["missing"])
+        self.settings({"sandbox": {"enabled": True, "excludedCommands": ["git push:*", "gh:*"]}})
+        self.assertNotIn(name, json.loads(self.report("--json"))["missing"])
+        checks = json.loads(self.report("--json"))["checks"]
+        self.assertEqual(len(checks), 7)
 
     def test_json_is_unchanged_by_what_was_seen(self):
         self.report("--once")

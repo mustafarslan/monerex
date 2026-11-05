@@ -29,7 +29,8 @@ class CapabilityTest(unittest.TestCase):
             handle.write(TERM + "\n")
         # A PATH with only our stand-ins and the system tools, so what is installed here does not leak in.
         self.env = dict(os.environ, PATH=self.bin + os.pathsep + "/usr/bin:/bin", MONEREX_DENYLIST=denylist, HOME=self.tmp)
-        for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
+        # And none of the sign-in of whoever runs the tests.
+        for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME"):
             self.env.pop(name, None)
         subprocess.run(["git", "init", "-q"], cwd=self.repo, env=self.env, capture_output=True, check=True)
 
@@ -140,7 +141,18 @@ class CapabilityTest(unittest.TestCase):
                 subprocess.run(["git", "remote", "remove", "origin"], cwd=self.repo, env=self.env, capture_output=True)
                 subprocess.run(["git", "remote", "add", "origin", url], cwd=self.repo, env=self.env, capture_output=True, check=True)
                 _, result = self.run_script(PROBE)
-                self.assertEqual(result["code_host"], {"present": True, "repo": "someone/project"})
+                self.assertEqual(result["code_host"], {"present": True, "gh": True, "gh_auth": False, "repo": "someone/project"})
+
+    def test_the_code_host_says_whether_gh_is_signed_in(self):
+        _, result = self.run_script(PROBE)
+        self.assertEqual((result["code_host"]["gh"], result["code_host"]["gh_auth"]), (False, False))
+        self.program("gh", "exit 0")
+        os.makedirs(os.path.join(self.tmp, ".config", "gh"))
+        with open(os.path.join(self.tmp, ".config", "gh", "hosts.yml"), "w", encoding="utf-8") as handle:
+            handle.write("github.com:\n    user: someone\n    oauth_token: gho_" + "x" * 36 + "\n")
+        done, result = self.run_script(PROBE)
+        self.assertEqual((result["code_host"]["gh"], result["code_host"]["gh_auth"]), (True, True))
+        self.assertNotIn("gho_", done.stdout)
 
     def test_the_repository_s_own_agents_are_listed(self):
         os.makedirs(os.path.join(self.repo, ".claude", "agents"))

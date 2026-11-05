@@ -16,7 +16,9 @@ run for real and what has only been tested).
    get a reviewer from another model family.
 4. **Process is sized to the task.** A typo gets none. A migration gets a lot.
 5. **Three human gates, no more.** You approve the intent and plan, the words that go out under
-   your name, and the merge. An agent acts up to a gate and never through it.
+   your name, and the merge. An agent acts up to a gate and never through it. The merge gate is
+   yours to hand over: with `"merge": "after-checks"` in `.monerex/config.json`, `ship` merges
+   once the checks are green and the review said yes.
 6. **Must-hold rules live in hooks.** Instructions are advice; a hook is enforcement.
 7. **Measure it.** A change to the method is kept when the evals say it helped.
 
@@ -38,7 +40,7 @@ capped so they do not crowd the next stage's context: intent ≤60 lines, plan �
 
 ## The loop
 
-One owner per stage. Eight commands you type; five stages `start` chains into.
+One owner per stage. Eight commands you type; six stages `start` chains into.
 
 | Stage | Entry point | You type it | Reads → writes | Gate |
 |---|---|---|---|---|
@@ -48,7 +50,7 @@ One owner per stage. Eight commands you type; five stages `start` chains into.
 | Build | `monerex:build` | via start | plan → diff + tests | — |
 | Verify | `monerex:verify` | via start | diff + plan → pass/fail with evidence | — |
 | Review | `/monerex:review` | yes | diff or PR → verified, ranked findings | triage findings |
-| Ship | `/monerex:ship` | yes, manual only | branch → PR, CI watched to green | **G2** your words first; **G3** you merge |
+| Ship | `/monerex:ship` | via start after review, or yes | `gh` set up → branch → PR, CI watched to green | **G2** your words first; **G3** you merge, unless `merge` is `after-checks` |
 | Feedback | `/monerex:feedback` | yes | review threads → fixes + replies | **G2** approve replies |
 | Bugfix | `/monerex:bugfix` | yes, manual only | tracker issue → failing test → fix → PR | G2, G3 |
 | Retro | `/monerex:retro` | yes | work log → lessons, eval cases, routing changes | approve changes |

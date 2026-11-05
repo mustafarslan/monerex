@@ -719,6 +719,44 @@ class HookTest(unittest.TestCase):
     def test_merging_is_never_done_by_monerex(self):
         self.assert_denied(self.bash("gh pr merge 12 --squash"), "merging is the user's decision")
 
+    def test_a_merge_runs_only_when_the_repository_opts_in_and_the_checks_passed(self):
+        merge = "gh pr merge 12 --repo o/r --merge --delete-branch"
+        self.configure({"checks": ["test -f a.txt"]})
+        self.assertEqual(self.run_checks().returncode, 0)
+        self.assert_denied(self.bash(merge), "merging is the user's decision unless .monerex/config.json sets")
+        self.configure({"checks": ["test -f a.txt"], "merge": "something-else"})
+        self.assertEqual(self.run_checks().returncode, 0)
+        self.assert_denied(self.bash(merge), "merging is the user's decision")
+        self.configure({"checks": ["test -f a.txt"], "merge": "after-checks"})
+        self.assertEqual(self.run_checks().returncode, 0)
+        self.assert_allowed(self.bash(merge))
+        self.assert_allowed(self.bash("gh pr merge 12 --repo o/r"))
+        self.assert_denied(self.bash(merge, subagent=True), "subagent")
+        self.assert_denied(self.bash(merge + " --admin"), "--admin")
+        self.assert_denied(self.bash(merge + " --auto"), "--auto")
+        self.assert_denied(self.bash("gh api -X PUT repos/o/r/pulls/12/merge"), "merging is the user's decision")
+        # Stale checks: a commit after the run.
+        self.put("b.txt", "more\n")
+        self.git("add", "b.txt")
+        self.git("commit", "-q", "-m", "second")
+        self.assert_denied(self.bash(merge), "a different commit")
+
+    def test_a_merge_needs_the_repository_s_checks(self):
+        self.configure({"merge": "after-checks"})
+        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --merge"), "a merge needs the repository's checks; .monerex/config.json lists none")
+        self.configure({"merge": "after-checks", "checks": []})
+        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --merge"), "lists none")
+
+    def test_a_checks_refusal_tells_the_agent_what_to_do(self):
+        self.configure({"checks": ["test -f a.txt"]})
+        done = self.bash("git push origin feature")
+        self.assert_denied(done, "yourself, then retry the push in a command of its own; nothing is needed from the user")
+        self.assertIn("scripts/check.py", done.stderr)
+        self.assertEqual(self.run_checks().returncode, 0)
+        done = self.bash("git commit -qam x && git push origin feature")
+        self.assert_denied(done, "moves a branch")
+        self.assertIn("nothing is needed from the user", done.stderr)
+
     def test_a_command_with_a_denylisted_term_is_denied(self):
         done = self.bash("git commit -m 'work for %s'" % TERM)
         self.assert_denied(done, "denylisted term")

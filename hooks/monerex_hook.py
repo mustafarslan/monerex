@@ -952,12 +952,13 @@ def moved_before(root, config, heads):
     if config.get("checks") and root in heads.get(MOVED, ()):
         return (
             "an earlier command in this line moves a branch, so the checks have not run on what "
-            "this pushes. Run the checks, then push in a command of its own."
+            "this pushes. Run `python3 %s/scripts/check.py` yourself, then retry the push in a "
+            "command of its own; nothing is needed from the user." % PLUGIN_ROOT
         )
     return None
 
 
-def checks_gate(root, config, commits=None):
+def checks_gate(root, config, commits=None, retry="the push"):
     if not config.get("checks"):
         return None
     import check
@@ -965,7 +966,10 @@ def checks_gate(root, config, commits=None):
     ok, message = check.status(root, commits)
     if ok:
         return None
-    return "%s. Run the checks first: python3 %s/scripts/check.py" % (message, PLUGIN_ROOT)
+    return (
+        "%s. Run `python3 %s/scripts/check.py` yourself, then retry %s in a command of its own; "
+        "nothing is needed from the user." % (message, PLUGIN_ROOT, retry)
+    )
 
 
 # The setting with which the owner lets one push reach the default branch past the
@@ -1354,6 +1358,27 @@ def gh_scope(words, plain):
     return None
 
 
+MERGE_REASON = "merging is the user's decision unless .monerex/config.json sets \"merge\": \"after-checks\"."
+
+
+def merge_refusal(words, data, root, config):
+    """Why this `gh pr merge` may not run, or None.
+
+    It runs only where the repository opted in, from the main session, without bypassing
+    branch protection or queueing a merge for later, and with the checks passed on HEAD.
+    """
+    if config.get("merge") != "after-checks":
+        return MERGE_REASON
+    if data.get("agent_id"):
+        return MERGE_REASON + " A subagent never merges; hand it back to the main session."
+    if not config.get("checks"):
+        return "a merge needs the repository's checks; .monerex/config.json lists none."
+    for flag in ("--admin", "--auto"):
+        if any(word == flag or word.startswith(flag + "=") for word in words):
+            return "a merge with %s is not allowed; merge once the checks have passed, without it." % flag
+    return checks_gate(root, config, retry="the merge")
+
+
 def gh_rules(words, data, root, config, heads=None):
     """The reason this `gh ...` command is refused, or None."""
     # The words that are not options, nor the value of an option that takes one: with
@@ -1368,9 +1393,11 @@ def gh_rules(words, data, root, config, heads=None):
             plain.append(word)
     pairs = list(zip(plain, plain[1:]))
     if ("pr", "merge") in pairs:
-        return "merging is the user's decision; monerex never merges."
+        reason = merge_refusal(words, data, root, config)
+        if reason:
+            return reason
     if "api" in plain and any(word.rstrip("/").endswith("/merge") for word in plain):
-        return "merging is the user's decision; monerex never merges."
+        return MERGE_REASON
     if ("pr", "create") in pairs:
         if data.get("agent_id"):
             return "only the main session opens a PR, inside ship."

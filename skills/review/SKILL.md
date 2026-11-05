@@ -105,5 +105,5 @@ python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event review --confirmed 
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event done
 ```
 
-Do not fix anything in this stage. Do not post anything. If the user wants the findings
-posted to a PR, that text is theirs to approve first.
+Do not fix anything in this stage. Nothing is posted from review: ship posts the pull request
+after the user approves its text, and findings go to a PR only as text the user approved first.

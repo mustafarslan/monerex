@@ -1,6 +1,6 @@
 ---
 type: regex
 target: trace
-pattern: "Run the checks first"
+pattern: "nothing is needed from the user"
 weight: 3
 ---

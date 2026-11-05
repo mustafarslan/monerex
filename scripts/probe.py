@@ -9,7 +9,8 @@ reports "not run". Standard library only.
                       that tool can explain a finding (`explain`, oxn 0.2.0)
   second_reviewer     a reviewer from another model family, and whether this
                       repository's `external_review` policy lets it be used
-  code_host           the `gh` program, and the repository's owner/name
+  code_host           the `gh` program, whether it holds a github.com sign-in (read from its
+                      config file, not asked of the network), and the repository's owner/name
   own_agents          agent definitions the repository itself ships
 """
 
@@ -126,6 +127,33 @@ def repo_slug(root):
     return "%s/%s" % match.groups() if match else None
 
 
+def gh_signed_in():
+    """Whether gh has a github.com sign-in, from its hosts file or a token in the environment.
+
+    Cheap and local: `gh auth status` would ask the network. Nothing read here is printed.
+    """
+    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
+        return True
+    folder = os.environ.get("GH_CONFIG_DIR")
+    if not folder:
+        if os.environ.get("XDG_CONFIG_HOME"):
+            folder = os.path.join(os.environ["XDG_CONFIG_HOME"], "gh")
+        elif os.name == "nt" and os.environ.get("APPDATA"):
+            folder = os.path.join(os.environ["APPDATA"], "GitHub CLI")
+        else:
+            folder = os.path.join(os.path.expanduser("~"), ".config", "gh")
+    try:
+        with open(os.path.join(folder, "hosts.yml"), encoding="utf-8") as handle:
+            return any(line.rstrip() == "github.com:" for line in handle)
+    except OSError:
+        return False
+
+
+def code_host(root):
+    gh = bool(shutil.which("gh"))
+    return {"present": gh, "gh": gh, "gh_auth": gh and gh_signed_in(), "repo": repo_slug(root)}
+
+
 def own_agents(root):
     folder = os.path.join(root, ".claude", "agents")
     try:
@@ -138,7 +166,7 @@ def probe(root):
     return {
         "architecture_gate": architecture_gate(root),
         "second_reviewer": second_reviewer(load_config(main_root(root))),
-        "code_host": {"present": bool(shutil.which("gh")), "repo": repo_slug(root)},
+        "code_host": code_host(root),
         "own_agents": own_agents(root),
     }
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **monerex ships by itself.** `ship` is no longer manual only: `start` goes on into it after
+  review when the repository has a code host. It asks you for one thing, the pull request's
+  text (G2), then pushes, opens the pull request and watches its checks.
+- **`gh` is set up when it is missing.** `scripts/gh_setup.py` installs `gh` with a package
+  manager already on the machine (`brew`, `winget`, `apt-get` when `sudo` needs no password,
+  `conda`), never by downloading and running an installer. Signed out, it starts the browser
+  login and shows the one-time code; signed in, it runs `gh auth setup-git`. It never prints a
+  token or `gh`'s output. The probe's `code_host` now says `gh` and `gh_auth`.
+- **Merging is opt-in.** With `"merge": "after-checks"` in `.monerex/config.json`, the guard
+  lets `gh pr merge` run from the main session, without `--admin` or `--auto`, once the checks
+  passed on HEAD, and `ship` merges when the review said yes. A repository that lists no
+  `checks` cannot merge this way. Unset, the merge stays yours.
+- **A task starts on its own branch.** On the default branch, `start` runs
+  `git switch -c monerex/<slug>` before any work. T0 commits there after its checks and goes
+  on into ship too, without a review.
+- **The guard's refusals speak to the agent.** A push refused for missing or stale checks says
+  to run `scripts/check.py` and retry; nothing is needed from you.
+- **Eval graders follow the new refusal wording** in `incident-push-without-checks` and
+  `incident-push-with-redirect`.
+- **A seventh posture check.** With the sandbox on, `git push` and `gh` must be in
+  `excludedCommands`, or ship cannot reach the code host.
+
 ## 0.3.0: the measured loop, the advisor, and the directory listing
 
 - **The advisor has a model and a way to be asked.** `models.advisor` is `fable` (it was

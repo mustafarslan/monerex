@@ -7,7 +7,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(ROOT, "skills")
 KNOWN = {"name", "description", "argument-hint", "user-invocable", "disable-model-invocation"}
-MANUAL_ONLY = {"ship", "bugfix", "feedback", "dispatch", "init"}  # they push, post, start sessions or opt a repository in
+MANUAL_ONLY = {"bugfix", "feedback", "dispatch", "init"}  # they post, start sessions or opt a repository in
 INTERNAL = {"route", "plan", "build", "verify", "intent"}  # reached through start
 
 
@@ -78,6 +78,17 @@ class SkillTest(unittest.TestCase):
         self.assertIn("the base from step 2", flat, "the pull request must go to the base the work started from")
         self.assertIn("`.monerex/state/protected-paths` in the worktree", flat, "say which state file takes the entry")
         self.assertIn("Do not write the file another way", flat)
+
+    def test_ship_sets_up_gh_first_and_start_continues_into_it(self):
+        ship = " ".join(self.skills["ship"][1].split())
+        self.assertIn('python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/gh_setup.py" --login', ship)
+        self.assertIn('"merge": "after-checks"', ship)
+        start = " ".join(self.skills["start"][1].split())
+        self.assertIn("`monerex:ship`", start)
+        # T0 has no review, and ships too: edit, checks, commit on its branch, then ship.
+        t0 = start[start.index("**T0** —"):start.index("**T1** —")]
+        self.assertIn("commit", t0)
+        self.assertIn("`monerex:ship`", t0)
 
     def test_retro_writes_its_file_even_when_it_proposes_nothing(self):
         # Seen in a live run: with a thin record the session showed the numbers in its answer
