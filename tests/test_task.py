@@ -414,6 +414,18 @@ class CommandLineTest(unittest.TestCase):
         self.run_script(TASK, "event", "done")
         self.assertNotIn("head", self.events()[-1])
 
+    def test_ship_records_the_pull_request_and_a_late_review_finds_its_task(self):
+        # monerex-merge finds a pull request's task through the ship event.
+        self.run_script(TASK, "event", "start", "--slug", "s", "--tier", "T1")
+        self.run_script(TASK, "event", "done")
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--pr", "7", "--slug", "s").returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["pr"], self.events()[-1]["task"]), ("ship", 7, "s"))
+        self.dispatch("monerex:reviewer")
+        counts = ["--confirmed", "0", "--plausible", "0", "--rejected", "0", "--merge", "yes"]
+        self.assertEqual(self.run_script(TASK, "event", "review", "--slug", "s", *counts).returncode, 0)
+        self.assertEqual((self.events()[-1]["event"], self.events()[-1]["task"]), ("review", "s"))
+        self.assertEqual(self.run_script(TASK, "event", "ship", "--slug", "s").returncode, 2, "ship needs --pr")
+
     def test_a_reviewer_from_before_the_last_verify_does_not_count(self):
         # Bugfix dispatches a reviewer to doubt the root cause long before its review stage.
         import time

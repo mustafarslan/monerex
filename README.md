@@ -197,10 +197,13 @@ no server, sends nothing to its author, and collects no telemetry.
   and your private terms, and `feedback` marks the review threads it fixed
   as resolved. monerex merges only after you ran `git config monerex.merge after-checks` in
   your own checkout (a setting in your local git config, not in the committed repository; a
-  worktree cannot supply it). Then `ship` merges from the main session, the `origin`
-  repository only, never with `--admin` or `--auto`, and only the commit named with
-  `--match-head-commit` on which the checks passed and the task's review said yes; a change
-  after that review needs a new one. A T0 task has no review and is never merged by monerex.
+  worktree cannot supply it). Then `ship` runs `monerex-merge <N>`, the only merge path (the
+  guard refuses every `gh pr merge`). It checks for itself that the pull request is open, on
+  the `origin` repository and not from a fork, goes to the default branch, that its head is the
+  commit the checks passed on and the task's review said yes on, and that CI is green, then
+  merges with `--match-head-commit` so nothing newer is merged. A change after the review needs
+  a new one. A T0 task has no review and is never merged by monerex. These checks read files a
+  shell command could rewrite; branch protection on GitHub is the stop that does not.
 - **Installing `gh`.** When `gh` is missing, `ship` runs `monerex-setup --install` (a command
   of its own, so you see it), which installs it with a package manager already on the machine (`brew`, `winget`, `apt-get` when `sudo` needs no password, or `conda`);
   nothing is downloaded and run. When `gh` is not signed in, it starts `gh auth login --web`

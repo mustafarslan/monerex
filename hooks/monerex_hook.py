@@ -979,15 +979,15 @@ OWNER_OVERRIDE = "monerex.allowdefaultpush"
 INCLUDE_REASON = "a config include may carry any setting, the ones that turn the guards off too; adding one is the owner's to do."
 # Settings an agent may not give or write, matched in a key or anywhere in a value, since a
 # value can carry one: an alias body runs `git -c <key>=...` of its own.
-# The owner's opt-in to merging, read from the owner checkout's own git config: setting it is
-# asked of the user, last so that a refusal above wins over the question.
+# The owner's opt-in to merging, which monerex-merge reads from the owner checkout's own git
+# config. The owner sets it; an agent may not, in any form.
 MERGE_SETTING = "monerex.merge"
 GUARD_SETTINGS = (
     (OWNER_OVERRIDE, "the owner's override of the default-branch rule is not for agents."),
     ("core.hookspath", "git's hooks may not be redirected."),
     ("include.path", INCLUDE_REASON),
     ("includeif.", INCLUDE_REASON),
-    (MERGE_SETTING, Ask("monerex.merge lets ship merge pull requests once the checks pass; turning it on is the owner's choice.")),
+    (MERGE_SETTING, "the owner's opt-in to merging is theirs to set: `git config monerex.merge after-checks`, run by them."),
 )
 # Settings that only restore git's default when they are removed.
 SAFE_TO_UNSET = (OWNER_OVERRIDE, "core.hookspath", MERGE_SETTING)
@@ -1023,31 +1023,27 @@ def config_refusal(args):
             mode = "unset"
         elif not arg.startswith("-"):
             words.append(arg)
+    if words[:1] == ["edit"] or any(arg in ("-e", "--edit") for arg in args):
+        # An editor on the whole file can write any setting, monerex's own among them.
+        return "editing git's config file in an editor can change monerex's own settings; that is the owner's to do."
     if words[:1] in (["get"], ["list"]):
         mode = "read"
-    elif words[:1] in (["set"], ["unset"], ["edit"], ["rename-section"], ["remove-section"]):
+    elif words[:1] in (["set"], ["unset"], ["rename-section"], ["remove-section"]):
         mode = {"unset": "unset", "rename-section": "section", "remove-section": "section"}.get(words[0], "write")
         words = words[1:]
-    if any(arg in ("--rename-section", "--remove-section") for arg in args):
+    if any(arg in ("--rename-section", "--remove-section", "--rename") for arg in args):
         mode = "section"
     if mode == "section":
-        # The whole section goes, or moves: `monerex`, `core` with its hooks path, an include.
-        section = words[0].lower() if words else ""
-        if section == "monerex" or section.startswith("monerex."):
-            return "monerex's own settings are the owner's to change."
+        # The whole section goes, or moves, from or to `monerex`: the guards' own settings.
+        for section in (word.lower() for word in words[:2]):
+            if section == "monerex" or section.startswith("monerex."):
+                return "monerex's own settings are the owner's to change."
         return None
     if not words or mode == "read" or (len(words) < 2 and mode == "write" and not set(args) & CONFIG_WRITES):
         return None
     if mode == "unset" and words[0].lower() in SAFE_TO_UNSET:
         return None
     return setting_refusal(words[0], " ".join(words[1:]))
-
-
-def subagent_refusal(reason, subagent):
-    """A question for the main session is a refusal for a subagent."""
-    if subagent and isinstance(reason, Ask):
-        return str(reason) + " A subagent may not do this; hand it back to the main session."
-    return reason
 
 
 def assignment_refusal(words):
@@ -1236,11 +1232,11 @@ def git_rules(words, data, root, config, heads=None, is_command=True):
         key, _, value = override.partition("=")
         reason = setting_refusal(key, value)
         if reason:
-            return subagent_refusal(reason, subagent)
+            return reason
     if sub == "config":
         reason = config_refusal(without_redirections(args))
         if reason:
-            return subagent_refusal(reason, subagent)
+            return reason
     if directory:
         root = repo_root(os.path.join(data.get("cwd") or root, directory))
     if is_command and moves_a_branch(sub, without_redirections(args), root, heads):
@@ -1370,78 +1366,47 @@ def gh_scope(words, plain):
     return None
 
 
-MERGE_REASON = "merging is the user's decision unless the owner has run `git config monerex.merge after-checks` in their checkout."
-# GraphQL mutations that merge, or queue a merge.
+MERGE_REASON = (
+    "merging goes through monerex-merge; otherwise merging is the user's decision. "
+    "`monerex-merge <N>` checks the owner's opt-in, the checks, the review and CI itself."
+)
+# GraphQL mutations that merge, or queue a merge, refused in any `gh api` call.
 MERGE_MUTATIONS = ("mergepullrequest", "enablepullrequestautomerge", "mergebranch")
 API_MERGE = re.compile(r"(?:^|/)(?:pulls/[^/?#\s]+/merge|merges)/?(?:[?#]|$)")
+MERGE_SCRIPT = os.path.join(PLUGIN_ROOT, "scripts", "merge.py")
 
 
-def option_value(words, *names):
-    """The value given to the first of `names` (`--name value` or `--name=value`), or None."""
-    for index, word in enumerate(words):
-        for name in names:
-            if word == name and index + 1 < len(words):
-                return words[index + 1]
-            if name.startswith("--") and word.startswith(name + "="):
-                return word[len(name) + 1 :]
-    return None
+def is_merge_command(word):
+    """`monerex-merge`, or the script it runs: by the plugin's path or a stage's `${CLAUDE_SKILL_DIR}` one."""
+    if os.path.basename(word) == "monerex-merge":
+        return True
+    if os.path.basename(word) != "merge.py":
+        return False
+    return os.path.realpath(word) == os.path.realpath(MERGE_SCRIPT) or word.endswith("/../../scripts/merge.py") and "$" in word
 
 
-def merge_opted_in(root):
-    """The owner's opt-in, from the owner checkout's own config file; a worktree cannot give it."""
-    return git(owner_root(root), "config", "--local", "--get", MERGE_SETTING) == "after-checks"
+def merge_command_refusal(words, data):
+    """Why this run of monerex-merge may not go, or None: the main session, one number, nothing else.
 
-
-def reviewed_head(root):
-    """(head, merge) of the latest review of the task started last in this checkout's log."""
-    import task
-
-    records = task.read(root)
-    starts = [record.get("task") for record in records if record.get("event") == "start"]
-    if not starts:
-        return None, None
-    reviews = [record for record in records if record.get("event") == "review" and record.get("task") == starts[-1]]
-    if not reviews:
-        return None, None
-    return reviews[-1].get("head"), reviews[-1].get("merge")
-
-
-def merge_refusal(words, data, root, config, heads):
-    """Why this `gh pr merge` may not run, or None.
-
-    It runs only where the owner opted in, from the main session, without bypassing branch
-    protection or queueing a merge for later, on the origin repository, and on the one commit
-    both the checks and the task's review passed, named with --match-head-commit.
+    Only where it is the command, or the script python runs; a word given to `grep` is text.
     """
-    if not merge_opted_in(root):
-        return MERGE_REASON
+    at = command_index(words)
+    if at >= len(words):
+        return None
+    index = at
+    if os.path.basename(words[at]).startswith("python"):
+        index = at + 1
+        while index < len(words) and words[index].startswith("-"):
+            index += 1
+        if index >= len(words):
+            return None
+    if not is_merge_command(words[index]):
+        return None
     if data.get("agent_id"):
-        return MERGE_REASON + " A subagent never merges; hand it back to the main session."
-    for flag in ("--admin", "--auto"):
-        if any(word == flag or word.startswith(flag + "=") for word in words):
-            return "a merge with %s is not allowed; merge once the checks have passed, without it." % flag
-    if not config.get("checks"):
-        return "a merge needs the repository's checks; .monerex/config.json lists none."
-    import probe
-
-    origin = probe.repo_slug(owner_root(root))
-    named = option_value(words, "--repo", "-R")
-    if not origin or not named or named.lower() != origin.lower():
-        return "a merge names the origin repository with --repo (%s); this names %s." % (origin or "none found", named or "none")
-    sha = option_value(words, "--match-head-commit")
-    if sha in ("$(git rev-parse HEAD)", "`git rev-parse HEAD`"):
-        sha = git(root, "rev-parse", "HEAD")  # what the shell will put there, read now
-    if not sha or not re.fullmatch(r"[0-9a-f]{40}", sha):
-        return "a merge names the commit it merges with --match-head-commit <full sha>, so nothing newer is merged."
-    blocked = moved_before(root, config, heads) or checks_gate(root, config, [sha], retry="the merge")
-    if blocked:
-        return blocked
-    reviewed, verdict = reviewed_head(root)
-    if reviewed != sha or verdict != "yes":
-        return (
-            "the task's latest review did not say yes on %s. A change after the review needs a "
-            "new review (`monerex:review`) before ship can merge it." % sha[:12]
-        )
+        return "only the main session merges, through ship; a subagent never runs monerex-merge."
+    rest = without_redirections(words[index + 1:])
+    if len(rest) != 1 or not re.fullmatch(r"[1-9][0-9]*", rest[0]):
+        return "run it as `monerex-merge <N>`, the pull request's number and nothing else."
     return None
 
 
@@ -1459,13 +1424,10 @@ def gh_rules(words, data, root, config, heads=None):
             plain.append(word)
     pairs = list(zip(plain, plain[1:]))
     if ("pr", "merge") in pairs:
-        reason = merge_refusal(words, data, root, config, heads or {})
-        if reason:
-            return reason
+        return MERGE_REASON
     if "api" in plain:
-        if any(API_MERGE.search(word) for word in words):
-            return MERGE_REASON + " A merge through the API is never run."
-        if "graphql" in plain and any(name in " ".join(words).lower() for name in MERGE_MUTATIONS):
+        line = " ".join(words).lower()
+        if any(API_MERGE.search(word) for word in words) or any(name in line for name in MERGE_MUTATIONS):
             return MERGE_REASON + " A merge through the API is never run."
     if ("pr", "create") in pairs:
         if data.get("agent_id"):
@@ -1484,16 +1446,14 @@ def pre_bash(data, root, config):
     broken = confidential(command, root)
     if broken:
         return deny("this command contains a %s. Nothing was run." % broken[0])
-    question = None
     for words in segments(command):
-        reason = subagent_refusal(assignment_refusal(words), bool(data.get("agent_id")))
-        if isinstance(reason, Ask):
-            question = question or reason
-        elif reason:
+        reason = assignment_refusal(words) or merge_command_refusal(words, data)
+        if reason:
             return deny(reason + " Nothing was run.")
     reason = hook_file_refusal(command, root, data.get("cwd") or root)
     if reason:
         return deny(reason + " Nothing was run.")
+    question = None
     heads = {}  # repository root to (the branch a checkout earlier in the line leaves, the one before it)
     # Every `git` and `gh` word, not only the first, so a wrapper such as `env`, `time`,
     # `command` or a shell keyword does not hide one.

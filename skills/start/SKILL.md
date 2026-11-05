@@ -71,10 +71,10 @@ machine-learning or data work and no change to the code, run `monerex:consult` i
 ## 3. Say the path, then walk it
 
 State in one line: tier, risk flags, the stages you will run. For T2 and above, wait for the
-user to confirm before starting. Then give the task a short kebab-case name. If HEAD is on
-the default branch, or on a `monerex/*` branch that is not this task's: stop if `git status` shows
-changes; else `git fetch origin <base>` and `git switch -c "monerex/<slug>" "origin/<base>"`.
-A branch the user made stays as it is. Log the start (`--risk` if flagged):
+user to confirm before starting. Then name the task (short kebab-case). On the default branch
+or another task's `monerex/*` branch (a user's own branch stays): stop if `git status` shows
+changes; else `git fetch origin <base>` and `git switch -c "monerex/<slug>" "origin/<base>"`, or
+without `origin`, `git switch -c "monerex/<slug>"` from HEAD. Log the start (`--risk` if flagged):
 
 ```sh
 python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event start --slug "<slug>" --tier T1

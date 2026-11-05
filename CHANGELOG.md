@@ -14,17 +14,21 @@
   login and shows the one-time code; signed in, it runs `gh auth setup-git`, and ship stops if
   that fails. It never prints a token or `gh`'s output. The probe's `code_host` now says `gh`
   and `gh_auth`.
-- **Merging is the owner's opt-in.** `git config monerex.merge after-checks`, in the owner's
-  own checkout (not the committed config, and not a worktree), lets the guard pass
-  `gh pr merge` from the main session, on the `origin` repository, without `--admin` or
-  `--auto`, with `checks` listed, and only with `--match-head-commit` naming the commit the
-  checks passed on and the task's latest review said yes on. `task.py event review` records
-  that commit as `head`, so a fix after the review needs a new review. An agent setting
-  `monerex.merge` is asked of you, and refused to a subagent. Merges through `gh api`, by REST
-  path or GraphQL mutation, are refused. A T0 is never merged.
+- **Merging is the owner's opt-in, through one path.** The guard refuses every `gh pr merge`
+  and every API merge, by REST path or by GraphQL mutation name. `monerex-merge <N>`
+  (`scripts/merge.py`) is the only merge path, run by ship from the main session with the
+  pull request's number and nothing else. It merges only when the owner ran
+  `git config monerex.merge after-checks` in their own checkout, `checks` is listed, the pull
+  request is open, on `origin`, not from a fork and aimed at the default branch, its head is
+  the commit the checks passed on and the task's latest review said `--merge yes` on, and CI
+  is green; then `gh pr merge --match-head-commit`. `task.py event review` records the commit
+  as `head`, and `task.py event ship --pr <N> --slug <slug>` ties the pull request to its task.
+  An agent may not set `monerex.merge` in any form. A T0 is never merged. An earlier draft that
+  let the guard pass a `gh pr merge` it had read was removed: reading the command could not
+  bind it to a commit.
 - **A task starts on a fresh branch.** On the default branch or another task's `monerex/*`
-  branch, `start` fetches the base and runs `git switch -c "monerex/<slug>" "origin/<base>"`,
-  and stops first if the tree has changes. A T0 commits there, runs its checks and ships.
+  branch, `start` fetches the base and runs `git switch -c "monerex/<slug>" "origin/<base>"`
+  (with no `origin`, from HEAD), and stops first if the tree has changes. A T0 commits there, runs its checks and ships.
 - **The guard's refusals speak to the agent.** A push refused for missing or stale checks says
   to run `scripts/check.py` and retry; nothing is needed from you. The checks gate and the
   "moves a branch" refusal each have a phrase of their own.
@@ -32,9 +36,9 @@
   `incident-push-with-redirect` match the checks gate's own phrase. Their baselines in
   `evals/baselines.json` need re-recording.
 - **A seventh posture check.** With the sandbox on, the `excludedCommands` of all the
-  settings files together must cover `git push`, `git fetch`, `gh` and `monerex-setup`, or ship
-  cannot reach the code host. The profile in SECURITY.md lists `monerex-setup *` and
-  `monerex-forge *`.
+  settings files together must cover `git push`, `git fetch`, `gh`, `monerex-setup`,
+  `monerex-forge` and `monerex-merge`, or ship cannot reach the code host. The profile in
+  SECURITY.md lists the three launchers.
 
 ## 0.3.0: the measured loop, the advisor, and the directory listing
 

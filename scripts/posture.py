@@ -63,23 +63,24 @@ def rules(settings, kind):
 
 
 # What ship runs that must reach the code host, so must be left out of the sandbox.
-CODE_HOST_COMMANDS = ("git push", "git fetch", "gh", "monerex-setup")
+CODE_HOST_COMMANDS = ("git push", "git fetch", "gh", "monerex-setup", "monerex-forge", "monerex-merge")
 
 
 def covers(entry, command):
-    """Whether an `excludedCommands` entry covers a command: with its trailing ` *` or `:*`
-    taken off, it is the command or a whole-word prefix of it, so `git *` covers `git push`."""
+    """Whether an `excludedCommands` entry covers a command. With a trailing ` *` or `:*`, what
+    is left must be the command or a whole-word prefix of it, so `git *` covers `git push`; an
+    entry with no wildcard covers only that exact command."""
+    entry = entry.strip()
     for tail in (" *", ":*"):
         if entry.endswith(tail):
-            entry = entry[: -len(tail)]
-            break
-    entry = entry.strip()
-    return bool(entry) and (command == entry or command.startswith(entry + " "))
+            stem = entry[: -len(tail)].strip()
+            return bool(stem) and (command == stem or command.startswith(stem + " "))
+    return command == entry
 
 
 def reaches_code_host(settings):
-    """Whether ship's push, fetch and gh calls get past the sandbox: it is off, or the
-    `excludedCommands` of all the settings files together leave every one of them out."""
+    """Whether ship's push, fetch, gh and monerex launcher calls get past the sandbox: it is
+    off, or the `excludedCommands` of all the settings files together leave every one out."""
     if first(settings, "sandbox", "enabled") is not True:
         return True
     entries = []

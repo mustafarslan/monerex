@@ -26,8 +26,8 @@ A plugin ships skills, agents, hooks and workflows. It **cannot** ship sandbox o
 settings. Installing monerex does not turn a sandbox on. Monerex documents the profile below,
 and `/monerex:start` checks seven of its settings (sandbox on, unsandboxed retry off, fail when
 the sandbox cannot start, no host approved in advance, a push always asks, secrets files
-cannot be read, and, with the sandbox on, `git push`, `git fetch`, `gh` and `monerex-setup`
-covered by `excludedCommands` across those files, so ship can reach the code host) in the
+cannot be read, and, with the sandbox on, `git push`, `git fetch`, `gh`, `monerex-setup`,
+`monerex-forge` and `monerex-merge` covered by `excludedCommands` across those files, so ship can reach the code host) in the
 repository's and your user settings files. It does not see the rest of the profile (the other
 `excludedCommands`, the credential and `gh` rules) or
 settings passed with `--settings`, so "in place" means those seven. When gaps remain, monerex warns, shows the
@@ -49,7 +49,7 @@ deletes it.
 | **Confidential names reaching a repo** | Private denylist scanned by git's own hooks on commit and push. | **built** |
 | **Code leaving the machine** to a second reviewer or a web tool | Per-repo policy `external_review: off / diff-only / on`, default off. The only agent with web tools cannot read the repository; a web request carrying a denylisted term or a secret is refused. | **built**: the brief is scanned before it leaves; under `diff-only` the second reviewer starts in a scratch folder holding only the brief, a starting point rather than a wall, and under `on` it starts in the repository |
 | **An agent that reads the web** — untrusted pages and an outbound channel in one context | `researcher` has web search and fetch and nothing else: no file tools, no shell, and no instruction files or memory in its context. What it knows is its brief. Its report is untrusted text; `consult` re-checks the claims a decision rests on in a second run before they are used. | **built**, checked live |
-| **Destructive actions** | Shell guard: no force-push, no push to the default branch, no `--no-verify`, no merging a pull request unless the owner ran `git config monerex.merge after-checks` in their own checkout, and then only from the main session, on the `origin` repository, without `--admin` or `--auto`, with `checks` listed and passed on the commit named by `--match-head-commit`, which the task's latest review said yes on. The pre-push hook refuses a push to the default branch from the refs git really pushes, in a clone where it is installed and left in place; one command removes it, so it stops accidents, not an agent set on getting round it. Branch protection on the remote is the only stop that is not on this machine; GitHub offers it for a private repository only on a paid plan. | guard and pre-push rule **built** |
+| **Destructive actions** | Shell guard: no force-push, no push to the default branch, no `--no-verify`, no `gh pr merge` and no merge through `gh api`: the only merge path is `monerex-merge <N>` (`scripts/merge.py`), run from the main session, which merges only when the owner ran `git config monerex.merge after-checks` in their own checkout and every other condition it checks holds (below). The pre-push hook refuses a push to the default branch from the refs git really pushes, in a clone where it is installed and left in place; one command removes it, so it stops accidents, not an agent set on getting round it. Branch protection on the remote is the only stop that is not on this machine; GitHub offers it for a private repository only on a paid plan. | guard and pre-push rule **built** |
 | **Agent rewriting its own guards** | Edits to `.claude/`, `.mcp.json`, instruction files, `.git/`, hook scripts, CI workflows (`.github/`, `.gitlab-ci.yml`), editor settings (`.vscode/`), `.monerex/config.json` and `.monerex/state/`: denied for subagents, asked for the main session. Paths are resolved through symlinks. | **built**, checked live |
 | **Supply chain** | Lockfiles are closed unless the plan lists them; hooks are standard-library Python with no network. A new or upgraded dependency is a risk flag that needs your explicit yes, and optional capabilities are a named list (`capabilities.md`), not whatever is installed. | lockfile guard **built** |
 | **Insecure generated code** | Threat note in the plan for risk-flagged work; security dimension in review; deterministic scanners where the repo has them. Model review supplements them and is never the gate. | threat note and review **built**; scanners planned |
@@ -95,20 +95,23 @@ request, in a repository that has opted in with a `.monerex/config.json`. Withou
   change back that way, with a fresh time. So a command that puts an uncommitted edit of a
   protected file back to the committed version is not reported either.
 - **Shell:** no force-push, no push to the default branch (including `--all` and `--mirror`),
-  no skipped or redirected hooks, no merge unless `monerex.merge` is `after-checks` in the
-  owner checkout's local git config (read with `git config --local` there, so neither the
-  committed config nor a worktree can supply it). Then `gh pr merge` runs from the main
-  session only, never with `--admin` or `--auto`, only when `checks` lists at least one
-  command, only with `--repo` naming the `origin` repository, and only with
-  `--match-head-commit <sha>` where the checks passed on `<sha>` and the task's latest review,
-  which records the commit it reviewed, said `--merge yes` on it. An agent's attempt to set
-  `monerex.merge` through git (`git config`, `-c`, an alias, `GIT_CONFIG_*`) is asked of you,
-  and refused to a subagent; unsetting it is always allowed. Refused through `gh api`: a path
-  ending in `pulls/<n>/merge` or `/merges` (a query string does not hide it), and a GraphQL
-  call whose words name `mergePullRequest`, `enablePullRequestAutoMerge` or `mergeBranch`.
-  A GraphQL query read from a file (`-F query=@file`) is not seen. A subagent cannot push,
-  open a PR or merge. The checks record, `.monerex/state/checks.json`, can be forged by a shell
-  write, for a merge as for a push. When the
+  no skipped or redirected hooks, and no merge. Every `gh pr merge` is refused, whatever its
+  options. Through `gh api`, a path ending in `pulls/<n>/merge` or `/merges` (a query string
+  does not hide it) and any call whose words name `mergePullRequest`,
+  `enablePullRequestAutoMerge` or `mergeBranch`, whatever the endpoint is spelled, are refused;
+  a GraphQL query read from a file (`-F query=@file`) is not seen. The one merge path is
+  `monerex-merge <N>` (or `python3 -I <plugin>/scripts/merge.py <N>`): the guard lets the
+  main session run it with a pull request number and nothing else, and refuses it to a
+  subagent. The script reads every condition itself rather than from a command line:
+  `monerex.merge` is `after-checks` in the owner checkout's local git config (a worktree or
+  the committed config cannot say it); `checks` is listed; the pull request is open, on the
+  `origin` repository, not from a fork, and goes to the default branch; its head commit is the
+  one `scripts/check.py` recorded passing with a clean tree; the latest review of the task ship
+  recorded for it said `--merge yes` on that commit; and CI on it is passing. Then it runs
+  `gh pr merge --match-head-commit <that commit>`, so GitHub refuses the merge if the branch
+  moved since. An agent may not set `monerex.merge` in any form git takes (`git config`, `-c`,
+  an alias, `GIT_CONFIG_*`, a section rename to or from `monerex`, `git config -e`); unsetting
+  it is allowed. A subagent cannot push, open a PR or merge. When the
   repository lists `checks`, a push or PR needs a record from `scripts/check.py` showing they
   passed on exactly the commit being pushed, with nothing uncommitted in the tree. A push that
   does not contain the newest commits of the default branch, as last fetched, is asked about:
@@ -311,7 +314,7 @@ that repository only.
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
     "network": { "allowedDomains": [] },
-    "excludedCommands": ["git push *", "git fetch *", "git pull *", "git clone *", "gh *", "monerex-setup *", "monerex-forge *"],
+    "excludedCommands": ["git push *", "git fetch *", "git pull *", "git clone *", "gh *", "monerex-setup *", "monerex-forge *", "monerex-merge *"],
     "credentials": {
       "files": [
         { "path": "~/.ssh", "mode": "deny" },
@@ -348,7 +351,7 @@ Why each part is there:
   traffic, so any broad allowed domain — a code host, a paste service — is a way out.
 - **`excludedCommands`.** Git over SSH cannot get through the sandbox proxy, so a push or a
   fetch fails inside it. The code-host commands are listed so they run outside the sandbox
-  and go through the permission flow. `monerex-forge *` (the pull-request stages' reads) and `monerex-setup *` (ship's install and login of `gh`) are listed too. Add your package installer the same way, and anything else that must reach the network or write outside the project: a second-opinion tool, or the eval runner. The match is
+  and go through the permission flow. `monerex-forge *` (the pull-request stages' reads) `monerex-setup *` (ship's install and login of `gh`) and `monerex-merge *` (its merge) are listed too. An entry with no wildcard covers only that exact command. Add your package installer the same way, and anything else that must reach the network or write outside the project: a second-opinion tool, or the eval runner. The match is
   on the whole command line: a call that chains another command, redirects to a file, changes
   directory or uses `$(...)` stays sandboxed, and a git command over SSH then fails.
 - **`ask` rules.** In auto mode a classifier, not you, approves an excluded command, and it is
@@ -425,6 +428,11 @@ alternatives are a dev container, a virtual machine, or a cloud session.
   short line; `init` refuses a linked `.monerex` or `.gitignore`. The stage records guard
   against forgetting a stage, not against forging one: `.monerex/log/` is not a protected
   path, and a shell command can append to it.
+- **What these merge checks rest on.** `.monerex/state/checks.json`, `.monerex/log/tasks.jsonl`
+  and `.git/config` are files a shell command can write. So the merge checks stop mistakes,
+  not an agent set on getting round them, the same as the pre-push rule. The check that is
+  not on this machine is GitHub's `--match-head-commit`, which only merges the commit named;
+  the only stop that does not depend on this machine at all is branch protection on the remote.
 - **Ship installs and signs in to `gh`.** `monerex-setup` (`bin/`, running
   `scripts/gh_setup.py`) installs a missing `gh` only when given `--install`, and only with a
   package manager already present (`brew`, `winget`, `apt-get` when `sudo -n` needs no

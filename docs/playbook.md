@@ -18,7 +18,8 @@ run for real and what has only been tested).
 5. **Three human gates, no more.** You approve the intent and plan, the words that go out under
    your name, and the merge. An agent acts up to a gate and never through it. The merge gate is
    yours to hand over: after `git config monerex.merge after-checks` in your checkout, `ship`
-   merges the commit the checks passed and the review said yes on. A T0 is never merged.
+   runs `monerex-merge`, which merges the commit the checks passed and the review said yes on.
+   A T0 is never merged.
 6. **Must-hold rules live in hooks.** Instructions are advice; a hook is enforcement.
 7. **Measure it.** A change to the method is kept when the evals say it helped.
 

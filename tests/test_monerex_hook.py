@@ -719,98 +719,41 @@ class HookTest(unittest.TestCase):
     def test_merging_is_never_done_by_monerex(self):
         self.assert_denied(self.bash("gh pr merge 12 --squash"), "merging is the user's decision")
 
-    # ------------------------------------------------------------ merging, opted in
+    # ------------------------------------------------------------ merging
 
-    def head(self, cwd=None):
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd or self.repo, env=self.env, capture_output=True, text=True).stdout.strip()
-
-    def log_review(self, head, merge="yes", cwd=None, slug="t1"):
-        path = os.path.join(cwd or self.repo, ".monerex", "log", "tasks.jsonl")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "start", "tier": "T1"}) + "\n")
-            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "review", "merge": merge, "head": head}) + "\n")
-            handle.write(json.dumps({"at": time.time(), "task": slug, "event": "done"}) + "\n")
-
-    def ready_to_merge(self):
-        """Opted in, checks listed and passed, origin o/r, the review said yes on HEAD."""
+    def test_every_gh_pr_merge_is_refused_even_when_the_owner_opted_in(self):
+        # Reading shell text could not bind a merge to a commit; monerex-merge does that itself.
         self.configure({"checks": ["test -f a.txt"]})
-        self.git("remote", "add", "origin", "git@github.com:o/r.git")
         self.git("config", "monerex.merge", "after-checks")
         self.assertEqual(self.run_checks().returncode, 0)
-        head = self.head()
-        self.log_review(head)
-        return "gh pr merge 12 --repo o/r --merge --delete-branch --match-head-commit " + head
-
-    def test_a_merge_runs_when_opted_in_on_the_checked_and_reviewed_commit(self):
-        merge = self.ready_to_merge()
-        self.assert_allowed(self.bash(merge))
-        self.assert_allowed(self.bash('gh pr merge 12 --repo o/r --merge --match-head-commit "$(git rev-parse HEAD)"'))
-        self.assert_allowed(self.bash("gh pr merge 12 -R O/R --match-head-commit " + self.head()))
-
-    def test_without_the_local_opt_in_a_merge_is_the_user_s(self):
-        merge = self.ready_to_merge()
-        self.git("config", "--unset", "monerex.merge")
-        self.assert_denied(self.bash(merge), "merging is the user's decision unless")
-        # The committed config is no longer read for it.
-        self.configure({"checks": ["test -f a.txt"], "merge": "after-checks"})
-        self.assertEqual(self.run_checks().returncode, 0)
-        self.log_review(self.head())
-        self.assert_denied(self.bash(merge.rsplit(" ", 1)[0] + " " + self.head()), "merging is the user's decision unless")
-        self.git("config", "monerex.merge", "always")
-        self.assert_denied(self.bash(merge.rsplit(" ", 1)[0] + " " + self.head()), "merging is the user's decision unless")
-
-    def test_a_merge_is_refused_for_each_condition_that_fails(self):
-        merge = self.ready_to_merge()
-        head = self.head()
-        for command, fragment, subagent in (
-            (merge, "subagent", True),
-            (merge + " --admin", "--admin", False),
-            (merge + " --auto", "--auto", False),
-            (merge.replace("--repo o/r", "--repo someone/else"), "origin", False),
-            (merge.replace("--repo o/r ", ""), "origin", False),
-            ("gh pr merge 12 --repo o/r --merge", "--match-head-commit", False),
-            ("gh pr merge 12 --repo o/r --match-head-commit " + "0" * 40, "", False),
-            ("gh pr merge 12 --repo o/r --match-head-commit=$(git rev-parse HEAD)", "", False),
-            ("git commit -qam x && " + merge, "moves a branch", False),
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, env=self.env, capture_output=True, text=True).stdout.strip()
+        for command in (
+            "gh pr merge 12 --repo o/r --merge --delete-branch --match-head-commit " + head,
+            'gh pr merge 12 --repo o/r --match-head-commit "$(git rev-parse HEAD)"',
+            "gh pr merge https://github.com/o/r/pull/12 --merge",
+            "gh pr merge 12 --repo o/r --match-head-commit %s --match-head-commit %s" % (head, "0" * 40),
         ):
             with self.subTest(command):
-                self.assert_denied(self.bash(command, subagent=subagent), fragment)
-        self.log_review(head, merge="after-fixes")
-        self.assert_denied(self.bash(merge), "review")
+                done = self.bash(command)
+                self.assert_denied(done, "merging goes through monerex-merge")
+                self.assertIn("merging is the user's decision", done.stderr)
 
-    def test_a_merge_needs_the_repository_s_checks(self):
-        self.ready_to_merge()
-        self.configure({})
-        head = self.head()
-        self.log_review(head)
-        self.assert_denied(self.bash("gh pr merge 12 --repo o/r --match-head-commit " + head),
-                           "a merge needs the repository's checks; .monerex/config.json lists none")
+    def test_monerex_merge_runs_from_the_main_session_with_only_a_number(self):
+        for command in ("monerex-merge 5", "python3 -I \"${CLAUDE_SKILL_DIR}/../../scripts/merge.py\" 5",
+                        "python3 -I %s 5" % os.path.join(ROOT, "scripts", "merge.py")):
+            with self.subTest(command):
+                self.assert_allowed(self.bash(command))
+                self.assert_denied(self.bash(command, subagent=True), "subagent")
+        for command in ("monerex-merge 5 --repo x/y", "monerex-merge", "monerex-merge five", "monerex-merge 5 6",
+                        "python3 -I %s 5 --admin" % os.path.join(ROOT, "scripts", "merge.py")):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command), "monerex-merge <N>")
+        # Its name as text is not a run of it.
+        self.assert_allowed(self.bash("grep -rn monerex-merge README.md skills", subagent=True))
+        self.assert_denied(self.bash("env monerex-merge 5 --admin"), "monerex-merge <N>")
+        self.assert_denied(self.bash("echo hi && monerex-merge 5", subagent=True), "subagent")
 
-    def test_a_commit_after_the_review_needs_a_new_review_and_new_checks(self):
-        self.ready_to_merge()
-        self.put("b.txt", "fix for CI\n")
-        self.git("add", "b.txt")
-        self.git("commit", "-q", "-m", "fix CI")
-        merge = "gh pr merge 12 --repo o/r --match-head-commit " + self.head()
-        self.assert_denied(self.bash(merge), "a different commit")
-        self.assertEqual(self.run_checks().returncode, 0)
-        self.assert_denied(self.bash(merge), "review")
-        self.log_review(self.head())
-        self.assert_allowed(self.bash(merge))
-
-    def test_a_worktree_cannot_supply_the_merge_opt_in(self):
-        merge = self.ready_to_merge()
-        self.git("config", "--unset", "monerex.merge")
-        self.git("config", "extensions.worktreeConfig", "true")
-        tree = self.worktree(".claude/worktrees/w1")
-        subprocess.run(["git", "config", "--worktree", "monerex.merge", "after-checks"], cwd=tree, env=self.env, check=True)
-        subprocess.run([sys.executable, "-I", CHECK], cwd=tree, env=self.env, capture_output=True)
-        self.log_review(self.head(tree), cwd=tree)
-        done = self.run_hook("pre-bash", {"command": "gh pr merge 12 --repo o/r --match-head-commit " + self.head(tree)}, cwd=tree)
-        self.assert_denied(done, "merging is the user's decision unless")
-
-    def test_the_merge_opt_in_is_asked_for_and_never_set_by_a_subagent(self):
+    def test_the_merge_opt_in_is_never_set_by_an_agent(self):
         for command in (
             "git config monerex.merge after-checks",
             "git config --local monerex.merge after-checks",
@@ -820,16 +763,35 @@ class HookTest(unittest.TestCase):
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=monerex.merge GIT_CONFIG_VALUE_0=after-checks git status",
         ):
             with self.subTest(command):
-                self.assert_asked(self.bash(command), "monerex.merge")
-                self.assert_denied(self.bash(command, subagent=True), "monerex.merge")
+                self.assert_denied(self.bash(command))
+                self.assert_denied(self.bash(command, subagent=True))
         for command in ("git config --unset monerex.merge", "git config unset monerex.merge", "git config --get monerex.merge"):
             with self.subTest(command):
                 self.assert_allowed(self.bash(command))
-                self.assert_allowed(self.bash(command, subagent=True))
-        self.assert_denied(self.bash("git config monerex.defaultBranch other"), "monerex's own settings")
+
+    def test_a_merge_setting_on_the_command_line_does_not_hide_the_rules_after_it(self):
+        # Seen in review: `-c monerex.merge=x` became a question and the force push went unread.
+        self.assert_denied(self.bash("git -c monerex.merge=x push --force origin feature"))
+        self.assert_denied(self.bash("git -c monerex.merge=x push origin master"))
+        self.assert_denied(self.bash("git -c monerex.merge=x push --force origin feature", subagent=True))
+
+    def test_renaming_or_editing_into_monerex_settings_is_refused(self):
+        for command in (
+            "git config --rename-section monerex other",
+            "git config --rename-section other monerex",
+            "git config --rename-section other monerex.x",
+            "git config rename-section other monerex",
+            "git config --rename other monerex",
+            "git config -e",
+            "git config --edit",
+            "git config edit",
+            "git config --local -e",
+        ):
+            with self.subTest(command):
+                self.assert_denied(self.bash(command))
+        self.assert_allowed(self.bash("git config --rename-section old new"))
 
     def test_a_merge_through_the_api_is_refused(self):
-        self.ready_to_merge()
         for command in (
             "gh api -X PUT repos/o/r/pulls/12/merge",
             "gh api -X PUT 'repos/o/r/pulls/12/merge?merge_method=squash'",
@@ -839,6 +801,9 @@ class HookTest(unittest.TestCase):
             "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
             "gh api graphql -F query='mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }'",
             "gh api graphql -f query='mutation { MERGEBRANCH(input: {}) { clientMutationId } }'",
+            "gh api /graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+            "gh api https://api.github.com/graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+            "gh api -X POST https://api.github.com/repos/o/r/pulls/12/merge",
         ):
             with self.subTest(command):
                 self.assert_denied(self.bash(command), "merging is the user's decision")

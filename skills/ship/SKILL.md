@@ -57,7 +57,10 @@ nothing is pushed or posted before they approve.
 git push -u origin "HEAD:refs/heads/<branch>"
 git fetch origin "<branch>"
 gh pr create --repo <R> --base <base> --head <branch> --title "<title>" --body-file .monerex/tmp/pr-body.md
+python3 -I "${CLAUDE_SKILL_DIR}/../../scripts/task.py" event ship --pr <N> --slug "<slug>"
 ```
+
+`<N>` is the number `gh pr create` reports; `<slug>` is the task's, from the log's `start`.
 
 Each in a command of its own. Never by force, never skipping hooks. If the guard refuses a
 push because of the checks, run them yourself and push again. If it asks about a base that
@@ -88,14 +91,16 @@ checks in step 4 are green, and the task's latest review was logged with `--merg
 this commit. A T0 task has no review, so it is never merged here: say so, and leave it.
 
 ```sh
-gh pr merge <N> --repo <R> --merge --delete-branch --match-head-commit "$(git rev-parse HEAD)"
+monerex-merge <N>
 git fetch origin <base>
 ```
 
-The guard lets it through only on the commit both the checks and the review passed; a fix
-after the review needs a new review first. Never with `--admin` or `--auto`. In the main
-checkout, then `git switch <base>` and `git merge --ff-only origin/<base>`; in a worktree,
-the fetch is all. Otherwise the merge is the user's: skip this step.
+`monerex-merge` is the only way monerex merges; the guard refuses every other. It checks the
+opt-in, the checks on the pull request's head, the review of that commit and CI itself, and
+prints `merged`, `refused` with the reason, or `failed`. A fix after the review needs a new
+review first. After `merged`, in the main checkout, `git switch <base>` and
+`git merge --ff-only origin/<base>`; in a worktree the fetch is all. Otherwise the merge is
+the user's: skip this step.
 
 ## 6. Hand over
 

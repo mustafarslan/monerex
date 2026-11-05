@@ -8,6 +8,7 @@
   task.py event review --confirmed 2 --plausible 1 --rejected 3 --merge after-fixes
                                            also records the reviewed commit as `head`
   task.py event ablation --result exempt   a T0 has no gate; ablate.py logs every other result itself
+  task.py event ship --pr 12 --slug fix-login   the pull request ship opened for the task
   task.py event done
   task.py status [--json]                  the open task: the stages behind it and the next one
   task.py summary [--days N] [--json]
@@ -510,7 +511,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     actions = parser.add_subparsers(dest="action", required=True)
     event = actions.add_parser("event")
-    event.add_argument("name", choices=["start", "plan", "escalation", "verify", "review", "ablation", "done"])
+    event.add_argument("name", choices=["start", "plan", "escalation", "verify", "review", "ablation", "ship", "done"])
     event.add_argument("--slug")
     event.add_argument("--tier", choices=TIERS)
     event.add_argument("--risk", action="store_true", default=None)
@@ -520,6 +521,7 @@ def main(argv=None):
     event.add_argument("--verdict", choices=["pass", "fail"])
     event.add_argument("--merge", choices=["yes", "after-fixes", "no"])
     event.add_argument("--result", choices=ABLATION_RESULTS, help="for an ablation: the gate's result")
+    event.add_argument("--pr", type=int, help="for a ship: the pull request it opened, which monerex-merge reads")
     for kind in ("confirmed", "plausible", "rejected"):
         event.add_argument("--" + kind, type=int)
     current = actions.add_parser("status")
@@ -566,6 +568,8 @@ def main(argv=None):
         return 0
     if args.name == "start" and not (args.slug and args.tier):
         parser.error("start needs --slug and --tier")
+    if args.name == "ship" and not (args.pr and args.pr > 0):
+        parser.error("ship needs --pr, the pull request's number")
     # A verdict or a review count with nobody behind it is the session grading its own work.
     # Review counts need a reviewer after the latest change, verify or review: bugfix dispatches
     # one long before, to doubt the root cause, and a re-review needs one of its own.
@@ -580,7 +584,7 @@ def main(argv=None):
             print("monerex: no %s ran %s, so there is no %s to log. Dispatch %s; a stage that did not run "
                   "is reported as not run, never logged as passed." % (agent, when, what, how), file=sys.stderr)
             return 2
-    fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected")}
+    fields = {key: getattr(args, key) for key in ("tier", "risk", "rounds", "gap", "work", "verdict", "merge", "result", "confirmed", "plausible", "rejected", "pr")}
     if args.name == "review":
         # The commit the review said its word on: ship merges only that one.
         done = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True)
